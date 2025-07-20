@@ -8,7 +8,9 @@
       "Bash(firebase:*)",
       "Bash(flutter build:*)",
       "Bash(copy .env buildweb.env)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
