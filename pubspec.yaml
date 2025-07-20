@@ -1,0 +1,50 @@
+name: agnonymous_beta
+description: "A new Flutter project."
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # For connecting to Supabase
+  supabase_flutter: ^2.5.0
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # For using Google Fonts
+  google_fonts: ^6.2.1
+
+  # For using Font Awesome icons
+  font_awesome_flutter: ^10.7.0
+
+  # For formatting dates and times
+  intl: ^0.19.0
+
+  # For loading environment variables
+  flutter_dotenv: ^5.1.0
+
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10+1
+  flutter_svg_provider: ^1.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # This is the critical addition to fix the "File Not Found" error.
+  # It tells Flutter to bundle the .env file with your app.
+  assets:
+    - .env
+    - assets/images/
+
