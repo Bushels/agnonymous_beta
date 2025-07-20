@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:agnonymous_beta/create_post_screen.dart'; 
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg_provider/flutter_svg_provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -9,11 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // --- SUPABASE CLIENT ---
-// Use build-time defines for production (injected via Vercel build command)
-const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-
-late final SupabaseClient supabase;
+final supabase = Supabase.instance.client;
 
 // --- DATA MODELS ---
 class Post {
@@ -308,11 +305,16 @@ final trendingStatsProvider = StreamProvider<TrendingStats>((ref) {
 // --- MAIN APP SETUP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  await dotenv.load(fileName: ".env");
 
-  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+  final supabaseUrl = dotenv.env['SUPABASE_URL'];
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+  if (supabaseUrl == null || supabaseAnonKey == null) {
     runApp(const ErrorApp(
         message:
-            'Supabase URL or Anon Key is missing.\n\nCheck your build environment variables.'));
+            'Supabase URL or Anon Key is missing.\n\nPlease make sure your .env file is set up correctly.'));
     return;
   }
 
@@ -321,8 +323,8 @@ Future<void> main() async {
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
-    supabase = Supabase.instance.client;
     await supabase.auth.signInAnonymously();
+
   } catch (e) {
     runApp(ErrorApp(message: 'Failed to initialize Supabase or Sign In:\n$e'));
     return;

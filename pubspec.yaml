@@ -26,6 +26,9 @@ dependencies:
   # For formatting dates and times
   intl: ^0.19.0
 
+  # For loading environment variables
+  flutter_dotenv: ^5.1.0
+
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.10+1
   flutter_svg_provider: ^1.0.7
@@ -40,5 +43,5 @@ flutter:
   uses-material-design: true
 
   assets:
+    - .env
     - assets/images/
-
