@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:agnonymous_beta/create_post_screen.dart'; 
+import 'package:agnonymous_beta/env_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -305,14 +306,21 @@ final trendingStatsProvider = StreamProvider<TrendingStats>((ref) {
 // --- MAIN APP SETUP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
-  final supabaseUrl = dotenv.env['SUPABASE_URL'];
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    // It's okay if .env doesn't exist in production
+    print('Could not load .env file: $e');
+  }
+  
+  final supabaseUrl = EnvConfig.supabaseUrl;
+  final supabaseAnonKey = EnvConfig.supabaseAnonKey;
 
   if (supabaseUrl == null || supabaseAnonKey == null) {
     runApp(const ErrorApp(
         message:
-            'Supabase URL or Anon Key is missing.\n\nPlease make sure your .env file is set up correctly.'));
+            'Supabase URL or Anon Key is missing.\n\nPlease make sure your environment variables are configured.'));
     return;
   }
 

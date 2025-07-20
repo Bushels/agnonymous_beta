@@ -4,7 +4,11 @@
       "Bash(flutter run:*)",
       "Bash(flutter analyze:*)",
       "Bash(flutter pub:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(firebase:*)",
+      "Bash(flutter build:*)",
+      "Bash(copy .env buildweb.env)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }
