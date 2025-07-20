@@ -1,0 +1,13 @@
+{
+  "builds": [
+    {
+      "src": "pubspec.yaml",
+      "use": "@vercel/static-build",
+      "config": {
+        "installCommand": "flutter pub get",
+        "buildCommand": "flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
+        "outputDirectory": "build/web"
+      }
+    }
+  ]
+}
