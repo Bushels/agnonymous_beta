@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'package:agnonymous_beta/create_post_screen.dart'; 
+import 'package:agnonymous_beta/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg_provider/flutter_svg_provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +19,7 @@ class Post {
   final String category;
   final DateTime createdAt;
   final int commentCount;
+  final int voteCount;
 
   Post({
     required this.id,
@@ -28,6 +28,7 @@ class Post {
     required this.category,
     required this.createdAt,
     required this.commentCount,
+    required this.voteCount,
   });
 
   factory Post.fromMap(Map<String, dynamic> map) {
@@ -38,6 +39,7 @@ class Post {
       category: map['category'] ?? 'General',
       createdAt: DateTime.parse(map['created_at']),
       commentCount: map['comment_count'] ?? 0,
+      voteCount: map['vote_count'] ?? 0,
     );
   }
 }
@@ -99,7 +101,6 @@ class GlobalStats {
   }
 }
 
-// Model for Trending Stats
 class TrendingStats {
   final String trendingCategory;
   final String mostPopularPostTitle;
@@ -117,7 +118,7 @@ class TrendingStats {
   }
 }
 
-// Global function for category icons
+// --- UTILITY FUNCTIONS ---
 String getIconForCategory(String category) {
   switch (category.toLowerCase()) {
     case 'farming': return '🚜';
@@ -133,16 +134,63 @@ String getIconForCategory(String category) {
   }
 }
 
-// --- DATA PROVIDERS (RIVERPOD) ---
+// --- RIVERPOD PROVIDERS ---
 final postsProvider = StreamProvider<List<Post>>((ref) {
-  final stream = supabase
-      .from('posts')
-      .stream(primaryKey: ['id'])
-      .order('created_at', ascending: false);
-
-  return stream.map((listOfMaps) {
-    return listOfMaps.map((map) => Post.fromMap(map)).toList();
+  final controller = StreamController<List<Post>>();
+  
+  // Function to fetch posts
+  Future<void> fetchPosts() async {
+    try {
+      final data = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', ascending: false);
+      
+      final posts = (data as List).map((map) => Post.fromMap(map)).toList();
+      controller.add(posts);
+    } catch (e) {
+      controller.addError(e);
+    }
+  }
+  
+  // Initial fetch
+  fetchPosts();
+  
+  // Listen to all changes on posts table
+  final postsChannel = supabase
+      .channel('posts_all_changes')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'posts',
+        callback: (payload) {
+          print('Posts table changed: ${payload.eventType}');
+          fetchPosts(); // Refetch all posts when any change occurs
+        },
+      )
+      .subscribe();
+  
+  // Listen to comments table to trigger post refresh when comments are added/deleted
+  final commentsChannel = supabase
+      .channel('comments_changes')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'comments',
+        callback: (payload) {
+          print('Comment change detected: ${payload.eventType}');
+          fetchPosts(); // Refetch posts to get updated comment counts
+        },
+      )
+      .subscribe();
+  
+  ref.onDispose(() {
+    postsChannel.unsubscribe();
+    commentsChannel.unsubscribe();
+    controller.close();
   });
+  
+  return controller.stream;
 });
 
 final commentsProvider = StreamProvider.family<List<Comment>, String>((ref, postId) {
@@ -162,21 +210,26 @@ final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId)
 
   Future<void> fetchStats() async {
     try {
-      final data = await supabase.rpc('get_post_vote_stats', params: {'post_id_in': postId});
-      if (data != null && data.isNotEmpty) {
-        controller.add(VoteStats.fromMap(data[0]));
-      } else {
-        controller.add(VoteStats(trueVotes: 0, partialVotes: 0, falseVotes: 0));
+      final response = await supabase.rpc('get_post_vote_stats', params: {'post_id_in': postId});
+      Map<String, dynamic> dataMap = {};
+      if (response is List && response.isNotEmpty) {
+        dataMap = response[0] as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic>) {
+        dataMap = response;
       }
+      controller.add(VoteStats.fromMap(dataMap));
     } catch (e) {
-      controller.addError(e);
+      if (const bool.fromEnvironment('dart.vm.product') == false) {
+        debugPrint('Error fetching vote stats: $e');
+      }
+      controller.add(VoteStats(trueVotes: 0, partialVotes: 0, falseVotes: 0));
     }
   }
 
   fetchStats();
 
-  final channel = supabase.channel('public:truth_votes:$postId');
-  channel
+  final channel = supabase
+      .channel('public:truth_votes:$postId')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -205,44 +258,44 @@ final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
 
   Future<void> fetchStats() async {
     try {
-      final data = await supabase.rpc('get_global_stats');
-      if (data != null && data.isNotEmpty) {
-        controller.add(GlobalStats.fromMap(data[0]));
-      } else {
-        controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
+      final response = await supabase.rpc('get_global_stats');
+      Map<String, dynamic> dataMap = {};
+      if (response is List && response.isNotEmpty) {
+        dataMap = response[0] as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic>) {
+        dataMap = response;
       }
+      controller.add(GlobalStats.fromMap(dataMap));
     } catch (e) {
-      controller.addError(e);
+      if (const bool.fromEnvironment('dart.vm.product') == false) {
+        debugPrint('Error fetching global stats: $e');
+      }
+      controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
     }
   }
 
   fetchStats();
 
-  final channel = supabase.channel('global_stats');
-  channel
+  // Listen to all table changes
+  final channel = supabase
+      .channel('global_stats_changes')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'posts',
-        callback: (payload) {
-          fetchStats();
-        },
+        callback: (payload) => fetchStats(),
       )
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'truth_votes',
-        callback: (payload) {
-          fetchStats();
-        },
+        callback: (payload) => fetchStats(),
       )
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'comments',
-        callback: (payload) {
-          fetchStats();
-        },
+        callback: (payload) => fetchStats(),
       )
       .subscribe();
 
@@ -254,81 +307,70 @@ final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
   return controller.stream;
 });
 
-// Provider for real-time trending data
-final trendingStatsProvider = StreamProvider<TrendingStats>((ref) {
-  final controller = StreamController<TrendingStats>();
-
-  Future<void> fetchStats() async {
-    try {
-      final data = await supabase.rpc('get_trending_stats');  // If using time-bound SQL, add: , params: {'recent_days': 7}
-      if (data != null && data.isNotEmpty) {
-        controller.add(TrendingStats.fromMap(data[0]));
-      } else {
-        controller.add(TrendingStats(trendingCategory: 'General', mostPopularPostTitle: 'No posts yet'));
-      }
-    } catch (e) {
-      controller.addError(e);
+final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
+  // This will cause the provider to rebuild when posts change
+  ref.watch(postsProvider);
+  
+  try {
+    final response = await supabase.rpc('get_trending_stats');
+    
+    print('Trending stats raw response: $response');
+    
+    if (response == null) {
+      return TrendingStats(
+        trendingCategory: 'General',
+        mostPopularPostTitle: 'No posts yet',
+      );
     }
+    
+    // Handle the response properly
+    Map<String, dynamic> data;
+    if (response is List && response.isNotEmpty) {
+      data = response[0] as Map<String, dynamic>;
+    } else if (response is Map<String, dynamic>) {
+      data = response;
+    } else {
+      return TrendingStats(
+        trendingCategory: 'General',
+        mostPopularPostTitle: 'No posts yet',
+      );
+    }
+    
+    return TrendingStats.fromMap(data);
+  } catch (e) {
+    print('Error fetching trending stats: $e');
+    return TrendingStats(
+      trendingCategory: 'General',
+      mostPopularPostTitle: 'No posts yet',
+    );
   }
-
-  fetchStats();
-
-  final channel = supabase.channel('trending');
-  channel
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'posts',
-        callback: (payload) {
-          fetchStats();
-        },
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'comments',
-        callback: (payload) {
-          fetchStats();
-        },
-      )
-      .subscribe();
-
-  ref.onDispose(() {
-    channel.unsubscribe();
-    controller.close();
-  });
-
-  return controller.stream;
 });
 
-
-// --- MAIN APP SETUP ---
+// --- MAIN APP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
-  final supabaseUrl = dotenv.env['SUPABASE_URL'];
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
-
-  if (supabaseUrl == null || supabaseAnonKey == null) {
-    runApp(const ErrorApp(
-        message:
-            'Supabase URL or Anon Key is missing.\n\nPlease make sure your .env file is set up correctly.'));
-    return;
-  }
-
+  
   try {
+    await dotenv.load(fileName: ".env");
+    
+    final supabaseUrl = dotenv.env['SUPABASE_URL'];
+    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+    if (supabaseUrl == null || supabaseAnonKey == null) {
+      throw Exception('Supabase credentials not found in .env file');
+    }
+
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
+    
     await supabase.auth.signInAnonymously();
-
+    
+    runApp(const ProviderScope(child: AgnonymousApp()));
   } catch (e) {
-    runApp(ErrorApp(message: 'Failed to initialize Supabase or Sign In:\n$e'));
-    return;
+    runApp(ErrorApp(message: e.toString()));
   }
-  
-  runApp(const ProviderScope(child: AgnonymousApp()));
 }
 
 class ErrorApp extends StatelessWidget {
@@ -343,10 +385,26 @@ class ErrorApp extends StatelessWidget {
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'FATAL ERROR:\n\n$message',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error, color: Colors.red, size: 64),
+                const SizedBox(height: 16),
+                Text(
+                  'Error Starting App',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ],
             ),
           ),
         ),
@@ -355,6 +413,7 @@ class ErrorApp extends StatelessWidget {
   }
 }
 
+// --- THEME ---
 final theme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,
@@ -387,39 +446,47 @@ class AgnonymousApp extends StatelessWidget {
   }
 }
 
-// --- UI WIDGETS ---
-
-class HomeScreen extends StatelessWidget {
+// --- HOME SCREEN ---
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String searchQuery = '';
+  bool isSearching = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: Svg('assets/images/background_pattern.svg'),
-            fit: BoxFit.cover,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            floating: true,
+            pinned: false,
+            snap: true,
+            backgroundColor: const Color.fromRGBO(17, 24, 39, 0.8),
+            title: HeaderBar(
+              onSearchChanged: (query) {
+                setState(() {
+                  searchQuery = query;
+                  isSearching = query.isNotEmpty;
+                });
+              },
+            ),
+            automaticallyImplyLeading: false,
+            toolbarHeight: 80,
           ),
-        ),
-        child: CustomScrollView(
-          slivers: [
-            const SliverAppBar(
-              floating: true,
-              pinned: false,
-              snap: true,
-              backgroundColor: Color.fromRGBO(17, 24, 39, 0.8),
-              title: HeaderBar(),
-              automaticallyImplyLeading: false,
-              toolbarHeight: 80,
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: TrendingSectionDelegate(),
-            ),
-            const SliverToBoxAdapter(child: PostFeed()),
-          ],
-        ),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: TrendingSectionDelegate(),
+          ),
+          SliverToBoxAdapter(
+            child: PostFeed(searchQuery: searchQuery),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -434,79 +501,158 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class HeaderBar extends StatelessWidget {
-  const HeaderBar({super.key});
+// --- HEADER BAR ---
+class HeaderBar extends StatefulWidget {
+  final Function(String) onSearchChanged;
+  const HeaderBar({super.key, required this.onSearchChanged});
+
+  @override
+  State<HeaderBar> createState() => _HeaderBarState();
+}
+
+class _HeaderBarState extends State<HeaderBar> {
+  bool isSearchExpanded = false;
+  final searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 400;
+    final isMediumScreen = MediaQuery.of(context).size.width < 600;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              FaIcon(FontAwesomeIcons.hatCowboy,
-                  color: theme.colorScheme.primary, size: 30),
+          if (!isSearchExpanded) ...[
+            Text(
+              'Agnonymous',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                color: Colors.white,
+              ),
+            ),
+            const Spacer(),
+            if (isMediumScreen) 
+              IconButton(
+                icon: const FaIcon(FontAwesomeIcons.magnifyingGlass, size: 18),
+                onPressed: () {
+                  setState(() {
+                    isSearchExpanded = true;
+                  });
+                },
+                color: Colors.grey.shade400,
+              ),
+            if (!isMediumScreen) ...[
+              _buildSearchField(),
               const SizedBox(width: 12),
-              Text('Agnonymous',
-                  style: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold, fontSize: 24)),
             ],
-          ),
-          if (MediaQuery.of(context).size.width > 600)
-            Row(
-              children: [
-                _buildSearchField(),
-                const SizedBox(width: 20),
-                const GlobalStatsHeader(),
-              ],
-            )
+            const GlobalStatsHeader(),
+          ] else ...[
+            // Expanded search mode for mobile
+            Expanded(
+              child: TextField(
+                controller: searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search posts...',
+                  prefixIcon: const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      setState(() {
+                        isSearchExpanded = false;
+                        searchController.clear();
+                        widget.onSearchChanged('');
+                      });
+                    },
+                  ),
+                  filled: true,
+                  fillColor: Colors.black.withOpacity(0.2),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: widget.onSearchChanged,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildSearchField() {
-    return SizedBox(
-      width: 200,
-      height: 40,
-      child: TextField(
-        decoration: InputDecoration(
-          hintText: 'Search posts...',
-          prefixIcon:
-              const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
-          filled: true,
-          fillColor: Colors.black.withAlpha(51),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide.none,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 200),
+      child: SizedBox(
+        height: 40,
+        child: TextField(
+          controller: searchController,
+          decoration: InputDecoration(
+            hintText: 'Search posts...',
+            prefixIcon: const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
+            filled: true,
+            fillColor: Colors.black.withOpacity(0.2),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
           ),
+          onChanged: widget.onSearchChanged,
         ),
       ),
     );
   }
 }
 
+// --- GLOBAL STATS HEADER ---
 class GlobalStatsHeader extends ConsumerWidget {
   const GlobalStatsHeader({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statsAsync = ref.watch(globalStatsProvider);
+    final isVerySmallScreen = MediaQuery.of(context).size.width < 350;
 
     return statsAsync.when(
-      loading: () => const SizedBox(height: 36, width: 36, child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (err, stack) => const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red),
+      loading: () => const SizedBox(
+        height: 36,
+        width: 36,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      error: (err, stack) => const FaIcon(
+        FontAwesomeIcons.triangleExclamation,
+        color: Colors.red,
+        size: 20,
+      ),
       data: (stats) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _StatItem(label: 'Posts', value: NumberFormat.compact().format(stats.totalPosts)),
-          const SizedBox(width: 24),
-          _StatItem(label: 'Votes', value: NumberFormat.compact().format(stats.totalVotes)),
-          const SizedBox(width: 24),
-          _StatItem(label: 'Comments', value: NumberFormat.compact().format(stats.totalComments)),
+          _StatItem(
+            label: isVerySmallScreen ? 'P' : 'Posts',
+            value: NumberFormat.compact().format(stats.totalPosts),
+          ),
+          const SizedBox(width: 12),
+          _StatItem(
+            label: isVerySmallScreen ? 'V' : 'Votes',
+            value: NumberFormat.compact().format(stats.totalVotes),
+          ),
+          const SizedBox(width: 12),
+          _StatItem(
+            label: isVerySmallScreen ? 'C' : 'Comments',
+            value: NumberFormat.compact().format(stats.totalComments),
+          ),
         ],
       ),
     );
@@ -523,67 +669,106 @@ class _StatItem extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label,
-            style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 12,
-                fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey.shade400,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
     );
   }
 }
 
-// Updated TrendingSectionDelegate
+// --- TRENDING SECTION ---
 class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 400;
+    
     return Consumer(
       builder: (context, ref, child) {
         final trendingAsync = ref.watch(trendingStatsProvider);
 
-        return trendingAsync.when(
-          loading: () => Container(
-            height: 40.0,
-            color: const Color.fromRGBO(31, 41, 55, 0.8),
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        return Container(
+          height: 40.0,
+          color: const Color.fromRGBO(31, 41, 55, 0.8),
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 8 : 16, 
+            vertical: 8,
           ),
-          error: (err, stack) => Container(
-            height: 40.0,
-            color: const Color.fromRGBO(31, 41, 55, 0.8),
-            child: const Center(child: FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red)),
-          ),
-          data: (stats) => Container(
-            height: 40.0,
-            color: const Color.fromRGBO(31, 41, 55, 0.8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                FaIcon(FontAwesomeIcons.fire, color: theme.colorScheme.secondary, size: 16),
-                const SizedBox(width: 8),
-                const Text('Trending:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 12),
-                Text('${stats.trendingCategory} ${getIconForCategory(stats.trendingCategory)}',
-                    style: TextStyle(color: theme.colorScheme.secondary)),
-                const Spacer(),
-                FaIcon(FontAwesomeIcons.arrowTrendUp, color: theme.colorScheme.primary, size: 16),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    stats.mostPopularPostTitle,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+          child: trendingAsync.when(
+            loading: () => const Center(
+              child: SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
+            error: (err, stack) => const Center(
+              child: FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red, size: 16),
+            ),
+            data: (stats) => isSmallScreen
+                ? Row(
+                    children: [
+                      FaIcon(FontAwesomeIcons.fire, color: theme.colorScheme.secondary, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${getIconForCategory(stats.trendingCategory)} ${stats.trendingCategory}',
+                          style: TextStyle(
+                            color: theme.colorScheme.secondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FaIcon(FontAwesomeIcons.trophy, color: theme.colorScheme.primary, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          stats.mostPopularPostTitle,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      FaIcon(FontAwesomeIcons.fire, color: theme.colorScheme.secondary, size: 16),
+                      const SizedBox(width: 8),
+                      const Text('Trending:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${stats.trendingCategory} ${getIconForCategory(stats.trendingCategory)}',
+                        style: TextStyle(color: theme.colorScheme.secondary),
+                      ),
+                      const Spacer(),
+                      FaIcon(FontAwesomeIcons.arrowTrendUp, color: theme.colorScheme.primary, size: 16),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          stats.mostPopularPostTitle,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         );
       },
@@ -598,48 +783,89 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => true;
 }
 
+// --- POST FEED ---
 class PostFeed extends ConsumerWidget {
-  const PostFeed({super.key});
+  final String searchQuery;
+  const PostFeed({super.key, this.searchQuery = ''});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final postsAsyncValue = ref.watch(postsProvider);
 
-    return LayoutBuilder(builder: (context, constraints) {
-      return Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: constraints.maxWidth > 800 ? (constraints.maxWidth - 800) / 2 : 16.0,
-          vertical: 24.0,
-        ),
-        child: postsAsyncValue.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(child: Text('Error: $err')),
-          data: (posts) {
-            if (posts.isEmpty) {
-              return const Center(
-                child: Text(
-                  'No posts yet. Be the first!',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth > 800 
+            ? (constraints.maxWidth - 800) / 2 
+            : 16.0;
+            
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 24.0,
+          ),
+          child: postsAsyncValue.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  Text('Error loading posts: $err'),
+                ],
+              ),
+            ),
+            data: (posts) {
+              // Filter posts based on search query
+              final filteredPosts = searchQuery.isEmpty 
+                  ? posts 
+                  : posts.where((post) {
+                      final query = searchQuery.toLowerCase();
+                      return post.title.toLowerCase().contains(query) ||
+                             post.content.toLowerCase().contains(query) ||
+                             post.category.toLowerCase().contains(query);
+                    }).toList();
+              
+              if (filteredPosts.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FaIcon(
+                        searchQuery.isEmpty 
+                            ? FontAwesomeIcons.seedling 
+                            : FontAwesomeIcons.magnifyingGlass,
+                        color: theme.colorScheme.primary,
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        searchQuery.isEmpty 
+                            ? 'No posts yet. Be the first!'
+                            : 'No posts found for "$searchQuery"',
+                        style: const TextStyle(fontSize: 18, color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredPosts.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 16),
+                itemBuilder: (context, index) => PostCard(post: filteredPosts[index]),
               );
-            }
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: posts.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 16),
-              itemBuilder: (context, index) {
-                final post = posts[index];
-                return PostCard(post: post);
-              },
-            );
-          },
-        ),
-      );
-    });
+            },
+          ),
+        );
+      },
+    );
   }
 }
 
+// --- POST CARD ---
 class PostCard extends StatefulWidget {
   final Post post;
   const PostCard({super.key, required this.post});
@@ -665,51 +891,51 @@ class _PostCardState extends State<PostCard> {
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Colors.blueGrey.withAlpha(50), 
-                  child: Text(getIconForCategory(widget.post.category), style: const TextStyle(fontSize: 24)),
+                  backgroundColor: Colors.blueGrey.withOpacity(0.2),
+                  child: Text(
+                    getIconForCategory(widget.post.category),
+                    style: const TextStyle(fontSize: 24),
+                  ),
                 ),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.post.category,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.post.category,
                         style: TextStyle(
-                            color: Colors.blueGrey[200],
-                            fontWeight: FontWeight.bold)),
-                    Text(
-                      DateFormat.yMMMd().add_jm().format(widget.post.createdAt),
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                    ),
-                  ],
+                          color: Colors.blueGrey.shade200,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        DateFormat.yMMMd().add_jm().format(widget.post.createdAt),
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(widget.post.title,
-                style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white)),
+            Text(
+              widget.post.title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(widget.post.content, style: TextStyle(color: Colors.grey[300])),
+            Text(
+              widget.post.content,
+              style: TextStyle(color: Colors.grey.shade300),
+            ),
             const SizedBox(height: 16),
             TruthMeter(postId: widget.post.id),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                VoteButtons(postId: widget.post.id),
-                TextButton.icon(
-                  onPressed: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
-                  icon: FaIcon(
-                      _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message, 
-                      size: 16
-                  ), 
-                  label: Text('${widget.post.commentCount} Comments'),
-                  style: TextButton.styleFrom(foregroundColor: Colors.grey[400]),
-                ),
-              ],
-            ),
+            _buildActionRow(),
             if (_isCommentsExpanded)
               CommentSection(postId: widget.post.id),
           ],
@@ -717,8 +943,311 @@ class _PostCardState extends State<PostCard> {
       ),
     );
   }
+
+  Widget _buildActionRow() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 450;
+    
+    return isSmallScreen
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              VoteButtons(postId: widget.post.id),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
+                icon: FaIcon(
+                  _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
+                  size: 16,
+                ),
+                label: Text('${widget.post.commentCount} Comments'),
+                style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
+              ),
+            ],
+          )
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                flex: 3,
+                child: VoteButtons(postId: widget.post.id),
+              ),
+              TextButton.icon(
+                onPressed: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
+                icon: FaIcon(
+                  _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
+                  size: 16,
+                ),
+                label: Text('${widget.post.commentCount} Comments'),
+                style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
+              ),
+            ],
+          );
+  }
 }
 
+// --- TRUTH METER ---
+class TruthMeter extends ConsumerWidget {
+  final String postId;
+  const TruthMeter({super.key, required this.postId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final voteStatsAsync = ref.watch(voteStatsProvider(postId));
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxWidth = screenWidth > 600 ? 600.0 : screenWidth - 32;
+
+    return voteStatsAsync.when(
+      loading: () => const SizedBox(
+        height: 28,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      error: (err, stack) => Text(
+        'Could not load votes',
+        style: TextStyle(color: Colors.red.shade400),
+      ),
+      data: (stats) {
+        if (stats.totalVotes == 0) {
+          return const Center(
+            child: Text(
+              'No votes yet. Be the first to cast one!',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+            ),
+          );
+        }
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Community Truth Meter',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Row(
+                  children: [
+                    if (stats.trueVotes > 0)
+                      _MeterSegment(
+                        value: stats.trueVotes / stats.totalVotes,
+                        color: theme.colorScheme.primary,
+                      ),
+                    if (stats.partialVotes > 0)
+                      _MeterSegment(
+                        value: stats.partialVotes / stats.totalVotes,
+                        color: theme.colorScheme.secondary,
+                      ),
+                    if (stats.falseVotes > 0)
+                      _MeterSegment(
+                        value: stats.falseVotes / stats.totalVotes,
+                        color: theme.colorScheme.error,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 16,
+                runSpacing: 4,
+                children: [
+                  _buildLabel('True', stats.trueVotes, stats.totalVotes, theme.colorScheme.primary),
+                  _buildLabel('Partial', stats.partialVotes, stats.totalVotes, theme.colorScheme.secondary),
+                  _buildLabel('False', stats.falseVotes, stats.totalVotes, theme.colorScheme.error),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLabel(String label, int votes, int total, Color color) {
+    final percentage = (votes / total * 100).toStringAsFixed(0);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$label ($percentage%)',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+        ),
+      ],
+    );
+  }
+}
+
+class _MeterSegment extends StatelessWidget {
+  final double value;
+  final Color color;
+  const _MeterSegment({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: (value * 100).toInt(),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        height: 10,
+        color: color,
+      ),
+    );
+  }
+}
+
+// --- VOTE BUTTONS ---
+class VoteButtons extends ConsumerStatefulWidget {
+  final String postId;
+  const VoteButtons({super.key, required this.postId});
+
+  @override
+  ConsumerState<VoteButtons> createState() => _VoteButtonsState();
+}
+
+class _VoteButtonsState extends ConsumerState<VoteButtons> {
+  bool _isVoting = false;
+  String? _pendingVote;
+
+  Future<void> _castVote(String voteType) async {
+    if (_isVoting) return;
+    
+    setState(() {
+      _isVoting = true;
+      _pendingVote = voteType;
+    });
+
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw 'User not authenticated';
+      }
+
+      await supabase.rpc('cast_user_vote', params: {
+        'post_id_in': widget.postId,
+        'user_id_in': userId,
+        'vote_type_in': voteType,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Vote "$voteType" cast successfully!'),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Error casting vote';
+        if (e.toString().contains('rate limit')) {
+          errorMessage = 'Too many votes! Please wait a minute.';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isVoting = false;
+          _pendingVote = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 400;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildVoteButton(
+          voteType: 'true',
+          icon: FontAwesomeIcons.check,
+          label: 'True',
+          color: theme.colorScheme.primary,
+          isCompact: isCompact,
+        ),
+        const SizedBox(width: 4),
+        _buildVoteButton(
+          voteType: 'partial',
+          icon: FontAwesomeIcons.triangleExclamation,
+          label: 'Partial',
+          color: theme.colorScheme.secondary,
+          isCompact: isCompact,
+        ),
+        const SizedBox(width: 4),
+        _buildVoteButton(
+          voteType: 'false',
+          icon: FontAwesomeIcons.xmark,
+          label: 'False',
+          color: theme.colorScheme.error,
+          isCompact: isCompact,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVoteButton({
+    required String voteType,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isCompact,
+  }) {
+    final isLoading = _isVoting && _pendingVote == voteType;
+    
+    return ElevatedButton(
+      onPressed: _isVoting ? null : () => _castVote(voteType),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.8),
+        foregroundColor: Colors.white,
+        minimumSize: isCompact ? const Size(60, 32) : null,
+        padding: isCompact 
+            ? const EdgeInsets.symmetric(horizontal: 8)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      child: isLoading
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          : isCompact
+              ? FaIcon(icon, size: 14)
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FaIcon(icon, size: 14),
+                    const SizedBox(width: 6),
+                    Text(label),
+                  ],
+                ),
+    );
+  }
+}
+
+// --- COMMENT SECTION ---
 class CommentSection extends ConsumerStatefulWidget {
   final String postId;
   const CommentSection({super.key, required this.postId});
@@ -752,11 +1281,29 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         'anonymous_user_id': userId,
         'content': content,
       });
+      
       _commentController.clear();
+      
+      // Force refresh of posts to update comment count (invalidate + refresh for emulator reliability)
+      ref.invalidate(postsProvider);
+      ref.refresh(postsProvider);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Comment posted!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error posting comment: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error posting comment: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -769,6 +1316,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   @override
   Widget build(BuildContext context) {
     final commentsAsync = ref.watch(commentsProvider(widget.postId));
+    
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(12),
@@ -786,7 +1334,12 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
               if (comments.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16.0),
-                  child: Center(child: Text('No comments yet.')),
+                  child: Center(
+                    child: Text(
+                      'No comments yet. Be the first!',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
                 );
               }
               return ListView.builder(
@@ -796,11 +1349,14 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 itemBuilder: (context, index) {
                   final comment = comments[index];
                   return Card(
-                    color: Colors.grey[800],
+                    color: Colors.grey.shade800,
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       title: Text(comment.content),
-                      subtitle: Text(DateFormat.yMMMd().format(comment.createdAt)),
+                      subtitle: Text(
+                        DateFormat.yMMMd().add_jm().format(comment.createdAt),
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                      ),
                     ),
                   );
                 },
@@ -816,18 +1372,26 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                   decoration: InputDecoration(
                     hintText: 'Add a comment...',
                     filled: true,
-                    fillColor: Colors.grey[850],
+                    fillColor: const Color(0xFF212121),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
+                  onSubmitted: (_) => _postComment(),
                 ),
               ),
               const SizedBox(width: 8),
               _isPostingComment
-                  ? const CircularProgressIndicator()
+                  ? const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
                   : IconButton(
                       icon: const FaIcon(FontAwesomeIcons.paperPlane),
                       onPressed: _postComment,
@@ -837,161 +1401,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class TruthMeter extends ConsumerWidget {
-  final String postId;
-  const TruthMeter({super.key, required this.postId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final voteStatsAsync = ref.watch(voteStatsProvider(postId));
-
-    return voteStatsAsync.when(
-      loading: () => const SizedBox(
-        height: 28, 
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      ),
-      error: (err, stack) => Text('Could not load votes', style: TextStyle(color: Colors.red[400])),
-      data: (stats) {
-        if (stats.totalVotes == 0) {
-          return const Center(
-            child: Text(
-              'No votes yet. Be the first to cast one!',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-            ),
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Community Truth Meter',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Row(
-                children: [
-                  _MeterSegment(
-                      value: stats.trueVotes / stats.totalVotes,
-                      color: theme.colorScheme.primary),
-                  _MeterSegment(
-                      value: stats.partialVotes / stats.totalVotes,
-                      color: theme.colorScheme.secondary),
-                  _MeterSegment(
-                      value: stats.falseVotes / stats.totalVotes,
-                      color: theme.colorScheme.error),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('True (${(stats.trueVotes / stats.totalVotes * 100).toStringAsFixed(0)}%)', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-                Text('Partial (${(stats.partialVotes / stats.totalVotes * 100).toStringAsFixed(0)}%)', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-                Text('False (${(stats.falseVotes / stats.totalVotes * 100).toStringAsFixed(0)}%)', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-              ],
-            )
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _MeterSegment extends StatelessWidget {
-  final double value;
-  final Color color;
-  const _MeterSegment({required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      flex: (value * 100).toInt(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        height: 10,
-        color: color,
-      ),
-    );
-  }
-}
-
-class VoteButtons extends ConsumerWidget {
-  final String postId;
-  const VoteButtons({super.key, required this.postId});
-
-  void _castVote(String voteType, WidgetRef ref, BuildContext context) async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw 'User not authenticated.';
-      }
-
-      await supabase.rpc('cast_user_vote', params: {
-        'post_id_in': postId,
-        'user_id_in': userId,
-        'vote_type_in': voteType,
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Vote "$voteType" cast successfully!'),
-            backgroundColor: Colors.green[700],
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error casting vote: $e'),
-            backgroundColor: Colors.red[700],
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: [
-        ElevatedButton.icon(
-          onPressed: () => _castVote('true', ref, context),
-          icon: const FaIcon(FontAwesomeIcons.check, size: 14),
-          label: const Text('True'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary.withAlpha(204), 
-            foregroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton.icon(
-          onPressed: () => _castVote('partial', ref, context),
-          icon: const FaIcon(FontAwesomeIcons.triangleExclamation, size: 14),
-          label: const Text('Partial'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.secondary.withAlpha(204), 
-             foregroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton.icon(
-          onPressed: () => _castVote('false', ref, context),
-          icon: const FaIcon(FontAwesomeIcons.xmark, size: 14), 
-          label: const Text('False'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.error.withAlpha(204), 
-             foregroundColor: Colors.white,
-          ),
-        ),
-      ],
     );
   }
 }
