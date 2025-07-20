@@ -6,8 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg_provider/flutter_svg_provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-// Corrected import path for intl package
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // --- SUPABASE CLIENT ---
@@ -80,6 +79,59 @@ class VoteStats {
   }
 }
 
+class GlobalStats {
+  final int totalPosts;
+  final int totalVotes;
+  final int totalComments;
+
+  GlobalStats({
+    required this.totalPosts,
+    required this.totalVotes,
+    required this.totalComments,
+  });
+
+  factory GlobalStats.fromMap(Map<String, dynamic> map) {
+    return GlobalStats(
+      totalPosts: (map['total_posts'] ?? 0).toInt(),
+      totalVotes: (map['total_votes'] ?? 0).toInt(),
+      totalComments: (map['total_comments'] ?? 0).toInt(),
+    );
+  }
+}
+
+// Model for Trending Stats
+class TrendingStats {
+  final String trendingCategory;
+  final String mostPopularPostTitle;
+
+  TrendingStats({
+    required this.trendingCategory,
+    required this.mostPopularPostTitle,
+  });
+
+  factory TrendingStats.fromMap(Map<String, dynamic> map) {
+    return TrendingStats(
+      trendingCategory: map['trending_category'] ?? 'General',
+      mostPopularPostTitle: map['most_popular_post_title'] ?? 'No posts yet',
+    );
+  }
+}
+
+// Global function for category icons
+String getIconForCategory(String category) {
+  switch (category.toLowerCase()) {
+    case 'farming': return '🚜';
+    case 'livestock': return '🐄';
+    case 'ranching': return '🤠';
+    case 'crops': return '🌾';
+    case 'markets': return '📈';
+    case 'weather': return '🌦️';
+    case 'chemicals': return '🧪';
+    case 'equipment': return '🔧';
+    case 'politics': return '🏛️';
+    default: return '📝';
+  }
+}
 
 // --- DATA PROVIDERS (RIVERPOD) ---
 final postsProvider = StreamProvider<List<Post>>((ref) {
@@ -105,7 +157,6 @@ final commentsProvider = StreamProvider.family<List<Comment>, String>((ref, post
   });
 });
 
-// ** COMPLETELY REWRITTEN VOTE STATS PROVIDER WITH CORRECT SYNTAX **
 final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId) {
   final controller = StreamController<VoteStats>();
 
@@ -122,12 +173,10 @@ final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId)
     }
   }
 
-  // Fetch initial stats
   fetchStats();
 
-  // Create a Realtime channel for all changes on the truth_votes table
-  final channel = supabase
-      .channel('public:truth_votes:$postId')
+  final channel = supabase.channel('public:truth_votes:$postId');
+  channel
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -138,15 +187,115 @@ final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId)
           value: postId,
         ),
         callback: (payload) {
-          // When a change is detected for our post, re-fetch the stats
           fetchStats();
         },
       )
       .subscribe();
 
-  // Clean up the channel when the provider is disposed
   ref.onDispose(() {
     channel.unsubscribe();
+    controller.close();
+  });
+
+  return controller.stream;
+});
+
+final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
+  final controller = StreamController<GlobalStats>();
+
+  Future<void> fetchStats() async {
+    try {
+      final data = await supabase.rpc('get_global_stats');
+      if (data != null && data.isNotEmpty) {
+        controller.add(GlobalStats.fromMap(data[0]));
+      } else {
+        controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
+      }
+    } catch (e) {
+      controller.addError(e);
+    }
+  }
+
+  fetchStats();
+
+  final channel = supabase.channel('global_stats');
+  channel
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'posts',
+        callback: (payload) {
+          fetchStats();
+        },
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'truth_votes',
+        callback: (payload) {
+          fetchStats();
+        },
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'comments',
+        callback: (payload) {
+          fetchStats();
+        },
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    channel.unsubscribe();
+    controller.close();
+  });
+
+  return controller.stream;
+});
+
+// Provider for real-time trending data
+final trendingStatsProvider = StreamProvider<TrendingStats>((ref) {
+  final controller = StreamController<TrendingStats>();
+
+  Future<void> fetchStats() async {
+    try {
+      final data = await supabase.rpc('get_trending_stats');  // If using time-bound SQL, add: , params: {'recent_days': 7}
+      if (data != null && data.isNotEmpty) {
+        controller.add(TrendingStats.fromMap(data[0]));
+      } else {
+        controller.add(TrendingStats(trendingCategory: 'General', mostPopularPostTitle: 'No posts yet'));
+      }
+    } catch (e) {
+      controller.addError(e);
+    }
+  }
+
+  fetchStats();
+
+  final channel = supabase.channel('trending');
+  channel
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'posts',
+        callback: (payload) {
+          fetchStats();
+        },
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'comments',
+        callback: (payload) {
+          fetchStats();
+        },
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    channel.unsubscribe();
+    controller.close();
   });
 
   return controller.stream;
@@ -340,20 +489,26 @@ class HeaderBar extends StatelessWidget {
   }
 }
 
-class GlobalStatsHeader extends StatelessWidget {
+class GlobalStatsHeader extends ConsumerWidget {
   const GlobalStatsHeader({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _StatItem(label: 'Posts', value: '1,234'),
-        SizedBox(width: 24),
-        _StatItem(label: 'Votes', value: '5,678'),
-        SizedBox(width: 24),
-        _StatItem(label: 'Comments', value: '987'),
-      ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statsAsync = ref.watch(globalStatsProvider);
+
+    return statsAsync.when(
+      loading: () => const SizedBox(height: 36, width: 36, child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (err, stack) => const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red),
+      data: (stats) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StatItem(label: 'Posts', value: NumberFormat.compact().format(stats.totalPosts)),
+          const SizedBox(width: 24),
+          _StatItem(label: 'Votes', value: NumberFormat.compact().format(stats.totalVotes)),
+          const SizedBox(width: 24),
+          _StatItem(label: 'Comments', value: NumberFormat.compact().format(stats.totalComments)),
+        ],
+      ),
     );
   }
 }
@@ -384,35 +539,54 @@ class _StatItem extends StatelessWidget {
   }
 }
 
+// Updated TrendingSectionDelegate
 class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      height: 40.0,
-      color: const Color.fromRGBO(31, 41, 55, 0.8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          FaIcon(FontAwesomeIcons.fire, color: theme.colorScheme.secondary, size: 16),
-          const SizedBox(width: 8),
-          const Text('Trending:',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 12),
-          Text('Chemicals 🧪',
-              style: TextStyle(color: theme.colorScheme.secondary)),
-          const Spacer(),
-          FaIcon(FontAwesomeIcons.arrowTrendUp, color: theme.colorScheme.primary, size: 16),
-          const SizedBox(width: 8),
-          const Flexible(
-            child: Text(
-              'Unreported pesticide use...',
-              style: TextStyle(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
+    return Consumer(
+      builder: (context, ref, child) {
+        final trendingAsync = ref.watch(trendingStatsProvider);
+
+        return trendingAsync.when(
+          loading: () => Container(
+            height: 40.0,
+            color: const Color.fromRGBO(31, 41, 55, 0.8),
+            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          error: (err, stack) => Container(
+            height: 40.0,
+            color: const Color.fromRGBO(31, 41, 55, 0.8),
+            child: const Center(child: FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red)),
+          ),
+          data: (stats) => Container(
+            height: 40.0,
+            color: const Color.fromRGBO(31, 41, 55, 0.8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                FaIcon(FontAwesomeIcons.fire, color: theme.colorScheme.secondary, size: 16),
+                const SizedBox(width: 8),
+                const Text('Trending:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 12),
+                Text('${stats.trendingCategory} ${getIconForCategory(stats.trendingCategory)}',
+                    style: TextStyle(color: theme.colorScheme.secondary)),
+                const Spacer(),
+                FaIcon(FontAwesomeIcons.arrowTrendUp, color: theme.colorScheme.primary, size: 16),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    stats.mostPopularPostTitle,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -421,7 +595,7 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   @override
   double get minExtent => 40.0;
   @override
-  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => false;
+  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => true;
 }
 
 class PostFeed extends ConsumerWidget {
@@ -477,21 +651,6 @@ class PostCard extends StatefulWidget {
 class _PostCardState extends State<PostCard> {
   bool _isCommentsExpanded = false;
 
-  String _getIconForCategory(String category) {
-    switch (category.toLowerCase()) {
-      case 'farming': return '🚜';
-      case 'livestock': return '🐄';
-      case 'ranching': return '🤠';
-      case 'crops': return '🌾';
-      case 'markets': return '📈';
-      case 'weather': return '🌦️';
-      case 'chemicals': return '🧪';
-      case 'equipment': return '🔧';
-      case 'politics': return '🏛️';
-      default: return '📝';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -507,7 +666,7 @@ class _PostCardState extends State<PostCard> {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.blueGrey.withAlpha(50), 
-                  child: Text(_getIconForCategory(widget.post.category), style: const TextStyle(fontSize: 24)),
+                  child: Text(getIconForCategory(widget.post.category), style: const TextStyle(fontSize: 24)),
                 ),
                 const SizedBox(width: 12),
                 Column(

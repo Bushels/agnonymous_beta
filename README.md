@@ -1,49 +1,56 @@
-# Agnonymous Beta
+# Agnonymous Beta - Project Status & Handoff
 
-Welcome to the Agnonymous Beta project! This is a Flutter-based mobile and web application designed to be a secure and anonymous platform for the agricultural sector.
+This document provides a high-level overview of the Agnonymous Beta application, its current state, and the immediate next steps for development.
 
-## 🚀 Current Status: Critical Issue
+## 1. Project Overview
 
-**Problem:** The application currently launches to a blank screen, showing only the background and the floating action button. The main content (app bar, post feed, etc.) is not rendering.
+Agnonymous is a Flutter-based mobile and web application designed as a secure and anonymous platform for the agricultural sector. Users can anonymously post reports, which are then validated by the community through a real-time voting and commenting system.
 
-**Likely Cause:** This issue almost always points to a problem during the app's startup sequence, before any UI is drawn. The most common culprit is a failure to correctly load the Supabase credentials from the `.env` file, causing the app to crash silently during initialization.
+- **Frontend:** Flutter
+- **Backend:** Supabase (Database, Auth, Real-time)
+- **State Management:** Flutter Riverpod
 
----
+## 2. Current Functionality (What's Working)
 
-## 🛠️ Troubleshooting Checklist: Fixing the Blank Screen
+The application has the core user-facing features implemented. The UI is connected to the Supabase backend, and all actions are performed in real-time.
 
-Please follow these steps **in order**. This checklist is designed to find and fix the configuration error.
+- **Real-Time Post Feed:** The home screen displays a live feed of posts from the `posts` table. New posts created by any user appear instantly at the top of the feed for everyone.
+- **Post Creation:** Users can click the "+" button to open a dedicated screen where they can write and submit a new post. The form includes validation and category selection.
+- **Real-Time Comments:** Each post has a collapsible comment section. Users can view and submit comments, which appear instantly for all users viewing that post.
+- **Real-Time Voting:** Users can cast a "True," "Partial," or "False" vote on any post. The vote is recorded in the `truth_votes` table, and the "Truth Meter" UI updates in real-time for all users.
 
-### 1. Verify the `.env` File
+## 3. Pending Tasks (What's Not Working)
 
-This is the most likely source of the error. Check every detail carefully.
+The primary remaining task is to implement the real-time aggregation and display of counters. The underlying data is being created correctly, but the UI is not yet displaying the live totals.
 
-- **Location:** The file must be named exactly `.env` and must be in the absolute root of your project folder (the same level as `pubspec.yaml`).
-- **Content:** Open the `.env` file and ensure it looks exactly like this, with no extra spaces or characters:
-SUPABASE_URL=https://ibgsloyjxdopkvwqcqwh.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3Nsb3lqeGRvcGt2d3FjcXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2ODYzMzksImV4cCI6MjA2ODI2MjMzOX0.Ik1980vz4s_UxVuEfBm61-kcIzEH-Nt-hQtydZUeNTw- **Keys:** Double-check that you have copied the correct URL and `anon` key from your Supabase project's API settings.
+- **Post-Specific Comment Count:** The comment count displayed on each `PostCard` is currently a placeholder and does not update when new comments are added.
+- **Global Counters:** The main counters in the header for total Posts, Votes, and Comments are placeholders and do not reflect the actual totals from the database.
 
-### 2. Verify `pubspec.yaml` Assets
+## 4. Next Steps & Implementation Plan
 
-Your `pubspec.yaml` file must explicitly tell Flutter to include the `.env` file and the background image in the app bundle.
+The immediate goal is to make all counters live and real-time. This requires a new Supabase SQL function and a new Riverpod provider in the Flutter app.
 
-- Open `pubspec.yaml`.
-- Find the `flutter:` section.
-- Ensure the `assets:` section is present and correctly formatted. It must look exactly like this (indentation is critical):
+### Step 1: Create a New Supabase SQL Function
 
-```yaml
-flutter:
-  uses-material-design: true
+A new function, `get_global_stats`, needs to be created in the Supabase SQL Editor. This function will efficiently query the database to get the total counts of posts, votes, and comments.
 
-  assets:
-    - .env
-    - assets/images/
-3. Perform a Full Clean and RebuildSometimes, old build artifacts can cause issues. A clean rebuild ensures everything is fresh.Stop the app if it is currently running.Open your terminal in VS Code.Run the following commands, one after the other:flutter clean
-```bash
-flutter pub get
-```bash
-flutter run
-4. Check the main.dart FileEnsure your lib/main.dart file is using the most recent version we created, which includes the robust error-checking logic. If the app still fails after the steps above, the ErrorApp widget in main.dart should now display a specific error message on the screen, telling us exactly what is wrong.⚙️ Project Setup from ScratchFor new setups or to start over, follow these steps:Create Project: In your parent folder, run flutter create agnonymous_beta.Open Project: Open the agnonymous_beta folder in VS Code.Replace pubspec.yaml: Replace the contents of pubspec.yaml with the latest correct version.Create .env file: Create the .env file in the project root and add your Supabase credentials.Create SVG Asset: Create the assets/images/background_pattern.svg file and paste the SVG code.Replace main.dart: Replace the contents of lib/main.dart with the latest correct version.Get Dependencies: Run flutter pub get in the terminal.Run App: Run flutter run on your desired device (Chrome is recommended for web).🗺️ Next Steps (Once UI is Visible)Once the application is rendering correctly, we will:Connect the UI to Supabase to fetch real data for the post feed.Implement the real-time functionality for posts and stats.Build the "Create Post" screen
+```sql
+-- This function should be added to the Supabase SQL Editor
+CREATE OR REPLACE FUNCTION get_global_stats()
+RETURNS TABLE (
+  total_posts BIGINT,
+  total_votes BIGINT,
+  total_comments BIGINT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    (SELECT COUNT(*) FROM posts) AS total_posts,
+    (SELECT COUNT(*) FROM truth_votes) AS total_votes,
+    (SELECT COUNT(*) FROM comments) AS total_comments;
+END;
+$$ LANGUAGE plpgsql;
+Step 2: Create a New Riverpod Provider in FlutterA new StreamProvider named globalStatsProvider should be created in main.dart. This provider will:Call the get_global_stats function to get the initial counts.Establish a real-time listener that re-fetches the stats whenever a new post, vote, or comment is created.Step 3: Update the UI WidgetsGlobalStatsHeader Widget: This widget must be converted to a ConsumerWidget to watch the new globalStatsProvider and display the live data
 
 Supabase SQL
 -- #############################################################################
@@ -221,3 +228,6 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon;
 
 Second Supabase Function
 ALTER PUBLICATION supabase_realtime ADD TABLE posts;
+
+Third Supabase Function
+ALTER PUBLICATION supabase_realtime ADD TABLE truth_votes;
