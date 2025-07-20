@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:agnonymous_beta/create_post_screen.dart'; 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg_provider/flutter_svg_provider.dart';
@@ -14,8 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
-// This will be initialized in main()
-final supabase = Supabase.instance.client;
+late final SupabaseClient supabase;
 
 // --- DATA MODELS ---
 class Post {
@@ -323,6 +321,7 @@ Future<void> main() async {
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
+    supabase = Supabase.instance.client;
     await supabase.auth.signInAnonymously();
   } catch (e) {
     runApp(ErrorApp(message: 'Failed to initialize Supabase or Sign In:\n$e'));
