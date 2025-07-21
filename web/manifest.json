@@ -1,11 +1,11 @@
 {
-    "name": "agnonymous_beta",
-    "short_name": "agnonymous_beta",
+    "name": "Agnonymous",
+    "short_name": "Agnonymous",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#111827",
+    "theme_color": "#84CC16",
+    "description": "Anonymous agricultural transparency platform - Share farming experiences and vote on community content",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
