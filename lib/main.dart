@@ -351,13 +351,24 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    await dotenv.load(fileName: ".env");
+    // Try to get from dart-define first (production)
+    String? supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+    String? supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
     
-    final supabaseUrl = dotenv.env['SUPABASE_URL'];
-    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+    // If not found, try to load from .env (development)
+    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+      try {
+        await dotenv.load(fileName: ".env");
+        supabaseUrl = dotenv.env['SUPABASE_URL'];
+        supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+      } catch (e) {
+        // .env file not found, which is okay for production builds
+      }
+    }
 
-    if (supabaseUrl == null || supabaseAnonKey == null) {
-      throw Exception('Supabase credentials not found in .env file');
+    if (supabaseUrl == null || supabaseUrl.isEmpty || 
+        supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
+      throw Exception('Supabase credentials not found. Please check environment variables or .env file.');
     }
 
     await Supabase.initialize(
