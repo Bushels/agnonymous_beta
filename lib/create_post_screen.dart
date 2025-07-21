@@ -175,7 +175,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               controller: _contentController,
               decoration: InputDecoration(
                 labelText: 'Details',
-                hintText: 'Describe what you observed. Include relevant details...',
+                hintText: 'Share your experience, provide evidence, and be specific to help others learn...',
                 filled: true,
                 fillColor: theme.colorScheme.surface,
                 border: OutlineInputBorder(
@@ -286,7 +286,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Posting Guidelines',
+                        'How to Make Great Posts',
                         style: TextStyle(
                           color: Colors.blue[300],
                           fontWeight: FontWeight.bold,
@@ -297,15 +297,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '• Report only what you have directly observed\n'
-                    '• Be specific about locations and dates\n'
-                    '• Focus on facts, not speculation\n'
-                    '• Include evidence if possible\n'
-                    '• Protect identities of individuals',
+                    '✅ Post confidently! Your experience matters\n'
+                    '🎯 Be as specific as possible - it may draw out additional tips\n'
+                    '📋 Provide evidence, first-hand accounts, or links to help build truth\n'
+                    '💡 Share what you heard - it might develop into a valuable discussion\n'
+                    '🤝 Help fellow farmers by contributing to the knowledge base',
                     style: TextStyle(
                       color: Colors.grey[300],
                       fontSize: 14,
-                      height: 1.5,
+                      height: 1.6,
                     ),
                   ),
                 ],
