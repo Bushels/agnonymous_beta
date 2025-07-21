@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:js' as js;
 import 'package:agnonymous_beta/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -130,6 +131,8 @@ String getIconForCategory(String category) {
     case 'chemicals': return '🧪';
     case 'equipment': return '🔧';
     case 'politics': return '🏛️';
+    case 'general': return '📝';
+    case 'other': return '🔗';
     default: return '📝';
   }
 }
@@ -144,11 +147,13 @@ final postsProvider = StreamProvider<List<Post>>((ref) {
       final data = await supabase
           .from('posts')
           .select('*')
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .limit(30);
       
       final posts = (data as List).map((map) => Post.fromMap(map)).toList();
       controller.add(posts);
     } catch (e) {
+      print('Error loading posts: $e');
       controller.addError(e);
     }
   }
@@ -351,12 +356,28 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    // Try to get from dart-define first (production)
-    String? supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-    String? supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+    // Try to get from JavaScript window.ENV first (Firebase hosting)
+    String? supabaseUrl;
+    String? supabaseAnonKey;
     
-    // If not found, try to load from .env (development)
-    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    try {
+      final env = js.context['ENV'] as js.JsObject?;
+      if (env != null) {
+        supabaseUrl = env['SUPABASE_URL'] as String?;
+        supabaseAnonKey = env['SUPABASE_ANON_KEY'] as String?;
+      }
+    } catch (e) {
+      // JS interop failed, try other methods
+    }
+    
+    // If not found, try dart-define (production)
+    if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
+      supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+    }
+    
+    // If still not found, try to load from .env (development)
+    if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
       try {
         await dotenv.load(fileName: ".env");
         supabaseUrl = dotenv.env['SUPABASE_URL'];
@@ -741,7 +762,9 @@ class CategoryChips extends StatelessWidget {
     'Weather',
     'Chemicals',
     'Equipment',
-    'Politics'
+    'Politics',
+    'General',
+    'Other'
   ];
 
   @override

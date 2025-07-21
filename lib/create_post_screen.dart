@@ -28,6 +28,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     {'name': 'Chemicals', 'icon': '🧪'},
     {'name': 'Equipment', 'icon': '🔧'},
     {'name': 'Politics', 'icon': '🏛️'},
+    {'name': 'General', 'icon': '📝'},
+    {'name': 'Other', 'icon': '🔗'},
   ];
 
   @override
@@ -159,8 +161,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter a title';
                 }
-                if (value.trim().length < 10) {
-                  return 'Title must be at least 10 characters';
+                if (value.trim().length < 1) {
+                  return 'Title must be at least 1 character';
                 }
                 if (value.trim().length > 100) {
                   return 'Title must be less than 100 characters';
@@ -191,8 +193,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter details';
                 }
-                if (value.trim().length < 20) {
-                  return 'Please provide more details (at least 20 characters)';
+                if (value.trim().length < 10) {
+                  return 'Please provide more details (at least 10 characters)';
                 }
                 if (value.trim().length > 2000) {
                   return 'Content is too long (max 2000 characters)';

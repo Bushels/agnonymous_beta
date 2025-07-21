@@ -10,7 +10,11 @@
       "Bash(copy .env buildweb.env)",
       "Bash(cp:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(chmod:*)",
+      "Bash(git pull:*)",
+      "Bash(ls:*)",
+      "Bash(dir:*)"
     ],
     "deny": []
   }
