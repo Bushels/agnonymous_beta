@@ -1,34 +1,191 @@
-# Agnonymous Beta - Project Status & Handoff
+# Agnonymous Beta - Agricultural Transparency Platform
 
-This document provides a high-level overview of the Agnonymous Beta application, its current state, and the immediate next steps for development.
+Agnonymous is a Flutter-based web and mobile application designed as a secure and anonymous platform for the agricultural sector. Users can anonymously post reports about agricultural issues, companies, and practices, which are then validated by the community through a real-time voting and commenting system.
 
-## 1. Project Overview
+## 🚀 Recent Updates (January 2025)
 
-Agnonymous is a Flutter-based mobile and web application designed as a secure and anonymous platform for the agricultural sector. Users can anonymously post reports, which are then validated by the community through a real-time voting and commenting system.
+### ✅ **Major Features Added**
+- **New Categories:** Added "General" 📝 and "Other" 🔗 categories to complement existing agricultural categories
+- **Data Migration:** Successfully imported 97 legacy posts from original Agnonymous platform
+- **Enhanced Post Creation:** Improved validation with more flexible requirements
+- **Performance Optimization:** Added pagination to handle large datasets efficiently
+- **Web App Fixes:** Resolved loading issues and improved compatibility
 
-- **Frontend:** Flutter
+### 🐛 **Critical Issues Resolved**
+- **App Loading Failures:** Fixed web app crashes when loading large datasets (97+ posts)
+- **Environment Variable Issues:** Implemented JavaScript interop to properly read Supabase credentials
+- **HTML Structure Problems:** Simplified web/index.html for better browser compatibility
+- **Post Validation:** Reduced minimum requirements to be more user-friendly
+
+### 📊 **Current Data Status**
+- **97 imported posts** from legacy platform with proper categorization
+- **11 categories** available: Farming, Livestock, Ranching, Crops, Markets, Weather, Chemicals, Equipment, Politics, General, Other
+- **30-post pagination** implemented for optimal performance
+
+## 🛠️ Technology Stack
+
+- **Frontend:** Flutter (Web & Mobile)
 - **Backend:** Supabase (Database, Auth, Real-time)
 - **State Management:** Flutter Riverpod
+- **Hosting:** Firebase Hosting
+- **Database:** PostgreSQL (via Supabase)
 
-## 2. Current Functionality (What's Working)
+## ⚡ Current Functionality
 
-The application has the core user-facing features implemented. The UI is connected to the Supabase backend, and all actions are performed in real-time.
+### ✅ **Fully Working Features**
+- **Real-Time Post Feed:** Live feed displays posts with pagination (30 posts max)
+- **Post Creation:** Complete form with category selection and validation
+- **Real-Time Comments:** Instant comment system for all posts
+- **Real-Time Voting:** Truth meter with "True," "Partial," or "False" voting
+- **Category Filtering:** Filter posts by agricultural categories
+- **Search Functionality:** Search posts by title and content
+- **Responsive Design:** Works across web and mobile platforms
+- **AdSense Integration:** Site verification and monetization ready
 
-- **Real-Time Post Feed:** The home screen displays a live feed of posts from the `posts` table. New posts created by any user appear instantly at the top of the feed for everyone.
-- **Post Creation:** Users can click the "+" button to open a dedicated screen where they can write and submit a new post. The form includes validation and category selection.
-- **Real-Time Comments:** Each post has a collapsible comment section. Users can view and submit comments, which appear instantly for all users viewing that post.
-- **Real-Time Voting:** Users can cast a "True," "Partial," or "False" vote on any post. The vote is recorded in the `truth_votes` table, and the "Truth Meter" UI updates in real-time for all users.
+### 📝 **Post Validation Requirements**
+- **Title:** Minimum 1 character, Maximum 100 characters
+- **Content:** Minimum 10 characters, Maximum 2000 characters
+- **Category:** Required selection from predefined list
 
-## 3. Pending Tasks (What's Not Working)
+### 🎯 **Available Categories**
+1. **Farming** 🚜 - General farming practices and issues
+2. **Livestock** 🐄 - Animal husbandry and cattle-related posts
+3. **Ranching** 🤠 - Ranch management and operations
+4. **Crops** 🌾 - Crop production, seeds, and harvest
+5. **Markets** 📈 - Agricultural markets and pricing
+6. **Weather** 🌦️ - Weather impacts and forecasting
+7. **Chemicals** 🧪 - Pesticides, fertilizers, and agricultural chemicals
+8. **Equipment** 🔧 - Machinery and agricultural technology
+9. **Politics** 🏛️ - Agricultural policy and regulations
+10. **General** 📝 - General agricultural discussions
+11. **Other** 🔗 - Miscellaneous topics
 
-The primary remaining task is to implement the real-time aggregation and display of counters. The underlying data is being created correctly, but the UI is not yet displaying the live totals.
+## 🌐 **Deployment & Live URLs**
+- **Live Web App:** [https://agnonymousbeta.web.app](https://agnonymousbeta.web.app)
+- **Firebase Console:** [https://console.firebase.google.com/project/agnonymousbeta](https://console.firebase.google.com/project/agnonymousbeta)
+- **Custom Domain:** Prepared for agnonymous.news (DNS setup pending)
 
-- **Post-Specific Comment Count:** The comment count displayed on each `PostCard` is currently a placeholder and does not update when new comments are added.
-- **Global Counters:** The main counters in the header for total Posts, Votes, and Comments are placeholders and do not reflect the actual totals from the database.
+## 🔧 **Recent Technical Fixes**
 
-## 4. Next Steps & Implementation Plan
+### **Web App Loading Issues**
+**Problem:** After importing 97 posts, the web app would hang or crash when trying to load all posts simultaneously.
 
-The immediate goal is to make all counters live and real-time. This requires a new Supabase SQL function and a new Riverpod provider in the Flutter app.
+**Root Causes:**
+1. No pagination - app tried to load all 97 posts at once
+2. Supabase credentials not properly accessible via JavaScript
+3. Complex HTML structure with Flutter bootstrap causing loading delays
+
+**Solutions Implemented:**
+1. **Added Pagination:** Limited initial load to 30 posts with `.limit(30)` in `main.dart:150`
+2. **JavaScript Interop:** Added `dart:js` import to read `window.ENV` variables from HTML
+3. **Simplified HTML:** Streamlined `web/index.html` to use direct `main.dart.js` loading
+4. **Enhanced Error Handling:** Added comprehensive logging for debugging
+
+### **Environment Variable Resolution**
+**Issue:** App couldn't read Supabase credentials from environment variables
+
+**Resolution:** Implemented fallback system in `main.dart`:
+1. Try `window.ENV` (Firebase/web deployment)
+2. Fallback to `dart-define` (production builds)
+3. Fallback to `.env` file (development)
+
+## 📦 **Data Migration Details**
+
+### **Legacy Post Import**
+- **Source:** Original Agnonymous platform database
+- **Total Posts:** 97 historical posts imported
+- **Date Range:** Posts from June 2025 - July 2025
+- **Categorization:** All posts categorized using new 11-category system
+- **Anonymous Users:** Migrated with `user_migrated_[0-96]` IDs
+
+### **Category Mapping Applied**
+Legacy posts were analyzed and categorized based on content:
+- Agricultural supply chain issues → **Markets**
+- Chemical/pesticide concerns → **Chemicals**  
+- Equipment and technology → **Equipment**
+- Policy and regulatory → **Politics**
+- General farming practices → **Farming**
+- Livestock operations → **Livestock**
+- And more...
+
+## 🚧 **Known Issues & Limitations**
+
+### **Current Limitations**
+- **Mobile App:** Not yet deployed to app stores (Flutter web only)
+- **Load More:** No "load more" button for pagination (only shows latest 30)
+- **User Profiles:** All users are anonymous, no persistent profiles
+- **Image Upload:** Not implemented in current version
+- **Push Notifications:** Not configured
+
+### **Future Enhancements**
+- Infinite scroll or "Load More" functionality
+- Mobile app deployment (iOS/Android)
+- Image/file attachment support
+- Advanced search and filtering
+- User reputation system
+- Content moderation tools
+
+## 💻 **Development Setup**
+
+### **Prerequisites**
+- Flutter SDK (latest stable)
+- Firebase CLI
+- Git
+
+### **Local Development**
+```bash
+# Clone repository
+git clone https://github.com/Bushels/agnonymous_beta.git
+cd agnonymous_beta
+
+# Install dependencies
+flutter pub get
+
+# Run web development server
+flutter run -d chrome
+
+# Build for production
+flutter build web
+
+# Deploy to Firebase
+firebase deploy --only hosting
+```
+
+### **Environment Variables**
+The app uses a fallback system for configuration:
+1. **Production (Firebase):** Credentials in `web/index.html` as `window.ENV`
+2. **Development:** Create `.env` file with:
+   ```
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+### **Key Files**
+- `lib/main.dart` - Main app with providers and UI
+- `lib/create_post_screen.dart` - Post creation form
+- `web/index.html` - Web app HTML with credentials
+- `firebase.json` - Firebase hosting configuration
+- `pubspec.yaml` - Flutter dependencies
+
+## 🎯 **Next Steps & Implementation Plan**
+
+### **Immediate Priorities**
+1. **Load More Posts:** Implement pagination beyond first 30 posts
+2. **Counter Accuracy:** Fix live counters for posts, votes, and comments
+3. **Mobile Optimization:** Improve mobile responsive design
+4. **Performance:** Optimize real-time updates for better performance
+
+### **Medium Term Goals**
+1. **Mobile App Deployment:** Build and deploy to iOS/Android app stores
+2. **Enhanced Search:** Add advanced filtering and search capabilities
+3. **User Experience:** Improve post creation and interaction flows
+4. **Content Management:** Add moderation and reporting features
+
+### **Long Term Vision**
+1. **Community Features:** User reputation and community governance
+2. **Data Analytics:** Trending topics and agricultural insights
+3. **Integration:** Connect with agricultural data sources and APIs
+4. **Monetization:** Expand AdSense and explore agricultural partnerships
 
 ### Step 1: Create a New Supabase SQL Function
 
