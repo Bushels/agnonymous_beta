@@ -1,24 +1,17 @@
 {
   "builds": [
     {
-      "src": "pubspec.yaml",
+      "src": "build.sh",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "build/web"
       }
     }
   ],
-  "buildCommand": "git clone https://github.com/flutter/flutter.git && export PATH=\"$PATH:`pwd`/flutter/bin\" && flutter --version && flutter pub get && flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY",
-  "devCommand": "flutter run -d web-server --web-port 3000",
-  "installCommand": "echo 'No install needed'",
-  "outputDirectory": "build/web",
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  ],
-  "env": {
-    "FLUTTER_WEB": "true"
-  }
+  ]
 }
