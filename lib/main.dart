@@ -467,6 +467,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String searchQuery = '';
+  String selectedCategory = '';
   bool isSearching = false;
 
   @override
@@ -495,7 +496,25 @@ class _HomeScreenState extends State<HomeScreen> {
             delegate: TrendingSectionDelegate(),
           ),
           SliverToBoxAdapter(
-            child: PostFeed(searchQuery: searchQuery),
+            child: CategoryChips(
+              selectedCategory: selectedCategory,
+              onCategoryChanged: (category) {
+                setState(() {
+                  selectedCategory = category;
+                  // Clear search when selecting category
+                  if (category.isNotEmpty) {
+                    searchQuery = '';
+                    isSearching = false;
+                  }
+                });
+              },
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: PostFeed(
+              searchQuery: searchQuery,
+              selectedCategory: selectedCategory,
+            ),
           ),
         ],
       ),
@@ -702,6 +721,97 @@ class _StatItem extends StatelessWidget {
   }
 }
 
+// --- CATEGORY CHIPS ---
+class CategoryChips extends StatelessWidget {
+  final String selectedCategory;
+  final Function(String) onCategoryChanged;
+  
+  const CategoryChips({
+    super.key,
+    required this.selectedCategory,
+    required this.onCategoryChanged,
+  });
+
+  static const List<String> categories = [
+    'Farming',
+    'Livestock', 
+    'Ranching',
+    'Crops',
+    'Markets',
+    'Weather',
+    'Chemicals',
+    'Equipment',
+    'Politics'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 8 : 16,
+        vertical: 12,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Filter by Category:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (selectedCategory.isNotEmpty)
+                TextButton(
+                  onPressed: () => onCategoryChanged(''),
+                  child: const Text(
+                    'Show All',
+                    style: TextStyle(color: Colors.blue),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: categories.map((category) {
+              final isSelected = selectedCategory == category;
+              return FilterChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(getIconForCategory(category)),
+                    const SizedBox(width: 6),
+                    Text(category),
+                  ],
+                ),
+                selected: isSelected,
+                onSelected: (selected) {
+                  onCategoryChanged(selected ? category : '');
+                },
+                selectedColor: theme.colorScheme.primary.withOpacity(0.2),
+                checkmarkColor: theme.colorScheme.primary,
+                backgroundColor: Colors.grey.withOpacity(0.1),
+                side: BorderSide(
+                  color: isSelected 
+                      ? theme.colorScheme.primary 
+                      : Colors.grey.withOpacity(0.3),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // --- TRENDING SECTION ---
 class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   @override
@@ -797,7 +907,8 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
 // --- POST FEED ---
 class PostFeed extends ConsumerWidget {
   final String searchQuery;
-  const PostFeed({super.key, this.searchQuery = ''});
+  final String selectedCategory;
+  const PostFeed({super.key, this.searchQuery = '', this.selectedCategory = ''});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -827,33 +938,56 @@ class PostFeed extends ConsumerWidget {
               ),
             ),
             data: (posts) {
-              // Filter posts based on search query
-              final filteredPosts = searchQuery.isEmpty 
-                  ? posts 
-                  : posts.where((post) {
-                      final query = searchQuery.toLowerCase();
-                      return post.title.toLowerCase().contains(query) ||
-                             post.content.toLowerCase().contains(query) ||
-                             post.category.toLowerCase().contains(query);
-                    }).toList();
+              // Filter posts based on search query and selected category
+              var filteredPosts = posts;
+              
+              // Apply category filter first
+              if (selectedCategory.isNotEmpty) {
+                filteredPosts = filteredPosts.where((post) {
+                  return post.category.toLowerCase() == selectedCategory.toLowerCase();
+                }).toList();
+              }
+              
+              // Apply search filter
+              if (searchQuery.isNotEmpty) {
+                final query = searchQuery.toLowerCase();
+                filteredPosts = filteredPosts.where((post) {
+                  return post.title.toLowerCase().contains(query) ||
+                         post.content.toLowerCase().contains(query) ||
+                         post.category.toLowerCase().contains(query);
+                }).toList();
+              }
               
               if (filteredPosts.isEmpty) {
+                String emptyMessage;
+                IconData emptyIcon;
+                
+                if (selectedCategory.isNotEmpty && searchQuery.isNotEmpty) {
+                  emptyMessage = 'No posts found in "$selectedCategory" for "$searchQuery"';
+                  emptyIcon = FontAwesomeIcons.magnifyingGlass;
+                } else if (selectedCategory.isNotEmpty) {
+                  emptyMessage = 'No posts yet in "$selectedCategory"\nBe the first to post!';
+                  emptyIcon = FontAwesomeIcons.seedling;
+                } else if (searchQuery.isNotEmpty) {
+                  emptyMessage = 'No posts found for "$searchQuery"';
+                  emptyIcon = FontAwesomeIcons.magnifyingGlass;
+                } else {
+                  emptyMessage = 'No posts yet. Be the first!';
+                  emptyIcon = FontAwesomeIcons.seedling;
+                }
+                
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       FaIcon(
-                        searchQuery.isEmpty 
-                            ? FontAwesomeIcons.seedling 
-                            : FontAwesomeIcons.magnifyingGlass,
+                        emptyIcon,
                         color: theme.colorScheme.primary,
                         size: 64,
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        searchQuery.isEmpty 
-                            ? 'No posts yet. Be the first!'
-                            : 'No posts found for "$searchQuery"',
+                        emptyMessage,
                         style: const TextStyle(fontSize: 18, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
