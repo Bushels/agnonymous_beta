@@ -28,6 +28,20 @@
       SUPABASE_URL: 'https://ibgsloyjxdopkvwqcqwh.supabase.co',
       SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3Nsb3lqeGRvcGt2d3FjcXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2ODYzMzksImV4cCI6MjA2ODI2MjMzOX0.Ik1980vz4s_UxVuEfBm61-kcIzEH-Nt-hQtydZUeNTw'
     };
+    
+    // Debug logging for troubleshooting
+    console.log('=== AGNONYMOUS DEBUG INFO ===');
+    console.log('App loaded at:', new Date().toISOString());
+    console.log('Supabase URL:', window.ENV.SUPABASE_URL);
+    console.log('Build timestamp:', Date.now());
+    console.log('================================');
+    
+    // Force cache clearing
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        console.log('Available caches:', names);
+      });
+    }
   </script>
   
   <!-- Service worker for PWA -->

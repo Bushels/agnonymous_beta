@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:js' as js;
+import 'dart:math' as math;
 import 'package:agnonymous_beta/create_post_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -137,65 +138,201 @@ String getIconForCategory(String category) {
   }
 }
 
-// --- RIVERPOD PROVIDERS ---
-final postsProvider = StreamProvider<List<Post>>((ref) {
-  final controller = StreamController<List<Post>>();
-  
-  // Function to fetch posts
-  Future<void> fetchPosts() async {
+// --- PAGINATION STATE ---
+// Category-specific Paginated State Class (immutable for efficient rebuilds)
+class CategoryPostsState {
+  final List<Post> posts;
+  final bool isLoading;
+  final bool hasMore;
+  final int currentPage;
+  final String? error;
+
+  const CategoryPostsState({
+    this.posts = const [],
+    this.isLoading = false,
+    this.hasMore = true,
+    this.currentPage = 0,
+    this.error,
+  });
+
+  CategoryPostsState copyWith({
+    List<Post>? posts,
+    bool? isLoading,
+    bool? hasMore,
+    int? currentPage,
+    String? error,
+  }) {
+    return CategoryPostsState(
+      posts: posts ?? this.posts,
+      isLoading: isLoading ?? this.isLoading,
+      hasMore: hasMore ?? this.hasMore,
+      currentPage: currentPage ?? this.currentPage,
+      error: error ?? this.error,
+    );
+  }
+}
+
+class PaginatedPostsState {
+  final Map<String, CategoryPostsState> categoryStates;
+  final String? error;
+
+  const PaginatedPostsState({
+    this.categoryStates = const {},
+    this.error,
+  });
+
+  PaginatedPostsState copyWith({
+    Map<String, CategoryPostsState>? categoryStates,
+    String? error,
+  }) {
+    return PaginatedPostsState(
+      categoryStates: categoryStates ?? this.categoryStates,
+      error: error ?? this.error,
+    );
+  }
+
+  CategoryPostsState getCategoryState(String category) {
+    return categoryStates[category] ?? const CategoryPostsState();
+  }
+}
+
+// Notifier for Category-specific Pagination Logic
+class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
+  PaginatedPostsNotifier(this.ref) : super(const PaginatedPostsState()) {
+    _initRealTime();
+    // Load initial posts for "all" category
+    loadPostsForCategory('all', isInitial: true);
+  }
+
+  final Ref ref;
+  final int _pageSize = 50;  // 50 posts per category for better coverage
+  RealtimeChannel? _postsChannel;
+  RealtimeChannel? _commentsChannel;
+
+  Future<void> loadPostsForCategory(String category, {bool isInitial = false, bool isRefresh = false}) async {
+    final categoryState = state.getCategoryState(category);
+    
+    if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh)) return;
+
+    final pageToLoad = isRefresh || isInitial ? 0 : categoryState.currentPage;
+
+    // Update this category's loading state
+    final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+    updatedCategoryStates[category] = categoryState.copyWith(isLoading: true, error: null);
+    state = state.copyWith(categoryStates: updatedCategoryStates);
+
     try {
-      final data = await supabase
+      var query = supabase
           .from('posts')
-          .select('*')
+          .select('*');
+
+      // Apply category filter for specific categories, skip for "all"
+      if (category != 'all') {
+        query = query.eq('category', category);
+      }
+
+      final data = await query
           .order('created_at', ascending: false)
-          .limit(30);
-      
-      final posts = (data as List).map((map) => Post.fromMap(map)).toList();
-      controller.add(posts);
+          .range(pageToLoad * _pageSize, (pageToLoad + 1) * _pageSize - 1);
+      final newPosts = (data as List).map((map) => Post.fromMap(map)).toList();
+
+      // Debug logging
+      print('=== CATEGORY PAGINATION DEBUG ===');
+      print('Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
+      print('Current state: ${categoryState.posts.length} posts, hasMore: ${categoryState.hasMore}');
+
+      // Deduplicate by ID to handle real-time inserts without duplicates
+      final Set<String> existingIds = categoryState.posts.map((p) => p.id).toSet();
+      final filteredNewPosts = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+
+      final updatedPosts = isRefresh || isInitial
+          ? [...filteredNewPosts, ...categoryState.posts]  // Prepend new for refreshes
+          : [...categoryState.posts, ...filteredNewPosts];  // Append for load more
+
+      final newCategoryState = categoryState.copyWith(
+        posts: updatedPosts,
+        isLoading: false,
+        hasMore: newPosts.length == _pageSize,
+        currentPage: pageToLoad + 1,
+      );
+
+      final finalCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+      finalCategoryStates[category] = newCategoryState;
+      state = state.copyWith(categoryStates: finalCategoryStates);
+
+      print('Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
+      print('=== END CATEGORY PAGINATION DEBUG ===');
     } catch (e) {
-      print('Error loading posts: $e');
-      controller.addError(e);
+      print('Error loading posts for category $category: $e');
+      final errorCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+      errorCategoryStates[category] = categoryState.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(categoryStates: errorCategoryStates);
     }
   }
+
+  void loadMoreForCategory(String category) => loadPostsForCategory(category);
+  Future<void> refreshCategory(String category) => loadPostsForCategory(category, isRefresh: true);
   
-  // Initial fetch
-  fetchPosts();
-  
-  // Listen to all changes on posts table
-  final postsChannel = supabase
-      .channel('posts_all_changes')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'posts',
-        callback: (payload) {
-          print('Posts table changed: ${payload.eventType}');
-          fetchPosts(); // Refetch all posts when any change occurs
-        },
-      )
-      .subscribe();
-  
-  // Listen to comments table to trigger post refresh when comments are added/deleted
-  final commentsChannel = supabase
-      .channel('comments_changes')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'comments',
-        callback: (payload) {
-          print('Comment change detected: ${payload.eventType}');
-          fetchPosts(); // Refetch posts to get updated comment counts
-        },
-      )
-      .subscribe();
-  
-  ref.onDispose(() {
-    postsChannel.unsubscribe();
-    commentsChannel.unsubscribe();
-    controller.close();
-  });
-  
-  return controller.stream;
+  // Method to ensure category is loaded
+  void ensureCategoryLoaded(String category) {
+    if (!state.categoryStates.containsKey(category)) {
+      loadPostsForCategory(category, isInitial: true);
+    }
+  }
+
+  void _initRealTime() {
+    _postsChannel = supabase
+        .channel('posts_all_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) {
+            print('Posts table changed: ${payload.eventType}');
+            // Refresh all loaded categories
+            for (final category in state.categoryStates.keys) {
+              refreshCategory(category);
+            }
+          },
+        )
+        .subscribe();
+
+    _commentsChannel = supabase
+        .channel('comments_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'comments',
+          callback: (payload) {
+            print('Comment change detected: ${payload.eventType}');
+            // Refresh all loaded categories to update comment counts
+            for (final category in state.categoryStates.keys) {
+              refreshCategory(category);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _postsChannel?.unsubscribe();
+    _commentsChannel?.unsubscribe();
+    super.dispose();
+  }
+}
+
+// --- RIVERPOD PROVIDERS ---
+// Provider Declaration
+final paginatedPostsProvider = StateNotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>((ref) {
+  return PaginatedPostsNotifier(ref);
+});
+
+// Keep legacy provider for compatibility with other components that might still use it
+final postsProvider = StreamProvider<List<Post>>((ref) {
+  final paginatedState = ref.watch(paginatedPostsProvider);
+  final allPosts = paginatedState.getCategoryState('all').posts;
+  return Stream.value(allPosts);
 });
 
 final commentsProvider = StreamProvider.family<List<Comment>, String>((ref, postId) {
@@ -270,11 +407,13 @@ final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
       } else if (response is Map<String, dynamic>) {
         dataMap = response;
       }
-      controller.add(GlobalStats.fromMap(dataMap));
+      final stats = GlobalStats.fromMap(dataMap);
+      print('=== DEBUG: Global Stats ===');
+      print('Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
+      print('=== End Global Stats ===');
+      controller.add(stats);
     } catch (e) {
-      if (const bool.fromEnvironment('dart.vm.product') == false) {
-        debugPrint('Error fetching global stats: $e');
-      }
+      print('Error fetching global stats: $e');
       controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
     }
   }
@@ -928,104 +1067,168 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
 }
 
 // --- POST FEED ---
-class PostFeed extends ConsumerWidget {
+class PostFeed extends ConsumerStatefulWidget {
   final String searchQuery;
   final String selectedCategory;
   const PostFeed({super.key, this.searchQuery = '', this.selectedCategory = ''});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsyncValue = ref.watch(postsProvider);
+  ConsumerState<PostFeed> createState() => _PostFeedState();
+}
+
+class _PostFeedState extends ConsumerState<PostFeed> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
+    final postsState = ref.read(paginatedPostsProvider);
+    final categoryState = postsState.getCategoryState(currentCategory);
+    
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+        !categoryState.isLoading) {
+      ref.read(paginatedPostsProvider.notifier).loadMoreForCategory(currentCategory);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final postsState = ref.watch(paginatedPostsProvider);
+    
+    // Determine which category to load
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
+    
+    // Ensure the category is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
+    });
+    
+    final categoryState = postsState.getCategoryState(currentCategory);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth > 800 
             ? (constraints.maxWidth - 800) / 2 
             : 16.0;
-            
-        return Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 24.0,
-          ),
-          child: postsAsyncValue.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(
+
+        // Error state
+        if (categoryState.error != null) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red, size: 48),
                   const SizedBox(height: 16),
-                  Text('Error loading posts: $err'),
+                  Text('Error loading posts: ${categoryState.error}'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory),
+                    child: const Text('Retry'),
+                  ),
                 ],
               ),
             ),
-            data: (posts) {
-              // Filter posts based on search query and selected category
-              var filteredPosts = posts;
-              
-              // Apply category filter first
-              if (selectedCategory.isNotEmpty) {
-                filteredPosts = filteredPosts.where((post) {
-                  return post.category.toLowerCase() == selectedCategory.toLowerCase();
-                }).toList();
-              }
-              
-              // Apply search filter
-              if (searchQuery.isNotEmpty) {
-                final query = searchQuery.toLowerCase();
-                filteredPosts = filteredPosts.where((post) {
-                  return post.title.toLowerCase().contains(query) ||
-                         post.content.toLowerCase().contains(query) ||
-                         post.category.toLowerCase().contains(query);
-                }).toList();
-              }
-              
-              if (filteredPosts.isEmpty) {
-                String emptyMessage;
-                IconData emptyIcon;
-                
-                if (selectedCategory.isNotEmpty && searchQuery.isNotEmpty) {
-                  emptyMessage = 'No posts found in "$selectedCategory" for "$searchQuery"';
-                  emptyIcon = FontAwesomeIcons.magnifyingGlass;
-                } else if (selectedCategory.isNotEmpty) {
-                  emptyMessage = 'No posts yet in "$selectedCategory"\nBe the first to post!';
-                  emptyIcon = FontAwesomeIcons.seedling;
-                } else if (searchQuery.isNotEmpty) {
-                  emptyMessage = 'No posts found for "$searchQuery"';
-                  emptyIcon = FontAwesomeIcons.magnifyingGlass;
-                } else {
-                  emptyMessage = 'No posts yet. Be the first!';
-                  emptyIcon = FontAwesomeIcons.seedling;
+          );
+        }
+
+        var filteredPosts = categoryState.posts;
+
+        // Apply search filter (category is already handled by loading specific category)
+        if (widget.searchQuery.isNotEmpty) {
+          final query = widget.searchQuery.toLowerCase();
+          filteredPosts = filteredPosts.where((post) =>
+              post.title.toLowerCase().contains(query) ||
+              post.content.toLowerCase().contains(query) ||
+              post.category.toLowerCase().contains(query)).toList();
+        }
+
+        // Empty state
+        if (filteredPosts.isEmpty && !categoryState.isLoading) {
+          String emptyMessage;
+          IconData emptyIcon;
+          
+          if (widget.searchQuery.isNotEmpty) {
+            if (currentCategory == 'all') {
+              emptyMessage = 'No posts found for "${widget.searchQuery}"';
+            } else {
+              emptyMessage = 'No posts found in "${widget.selectedCategory}" for "${widget.searchQuery}"';
+            }
+            emptyIcon = FontAwesomeIcons.magnifyingGlass;
+          } else if (currentCategory != 'all') {
+            emptyMessage = 'No posts yet in "${widget.selectedCategory}"\nBe the first to post!';
+            emptyIcon = FontAwesomeIcons.seedling;
+          } else {
+            emptyMessage = 'No posts yet\nBe the first to post!';
+            emptyIcon = FontAwesomeIcons.seedling;
+          }
+          
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FaIcon(emptyIcon, size: 64, color: Colors.grey.shade600),
+                const SizedBox(height: 16),
+                Text(
+                  emptyMessage,
+                  style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Loading state for initial load
+        if (filteredPosts.isEmpty && categoryState.isLoading) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading posts...', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: 24.0,
+            ),
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),  // Ensures refresh works even if not scrollable
+              itemCount: filteredPosts.length + (categoryState.isLoading && categoryState.currentPage > 0 ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == filteredPosts.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
                 }
-                
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FaIcon(
-                        emptyIcon,
-                        color: theme.colorScheme.primary,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        emptyMessage,
-                        style: const TextStyle(fontSize: 18, color: Colors.grey),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: PostCard(post: filteredPosts[index]),
                 );
-              }
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: filteredPosts.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 16),
-                itemBuilder: (context, index) => PostCard(post: filteredPosts[index]),
-              );
-            },
+              },
+            ),
           ),
         );
       },
