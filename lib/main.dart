@@ -245,9 +245,11 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
       final Set<String> existingIds = categoryState.posts.map((p) => p.id).toSet();
       final filteredNewPosts = newPosts.where((p) => !existingIds.contains(p.id)).toList();
 
-      final updatedPosts = isRefresh || isInitial
-          ? [...filteredNewPosts, ...categoryState.posts]  // Prepend new for refreshes
-          : [...categoryState.posts, ...filteredNewPosts];  // Append for load more
+      final updatedPosts = isInitial
+          ? filteredNewPosts  // Initial load: use new posts directly
+          : isRefresh 
+              ? [...filteredNewPosts, ...categoryState.posts]  // Prepend new for refreshes
+              : [...categoryState.posts, ...filteredNewPosts];  // Append for load more
 
       final newCategoryState = categoryState.copyWith(
         posts: updatedPosts,
