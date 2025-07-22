@@ -620,65 +620,95 @@ class AgnonymousApp extends StatelessWidget {
 }
 
 // --- HOME SCREEN ---
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   String searchQuery = '';
   String selectedCategory = '';
   bool isSearching = false;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
+    final postsState = ref.read(paginatedPostsProvider);
+    final categoryState = postsState.getCategoryState(currentCategory);
+
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+        !categoryState.isLoading) {
+      ref.read(paginatedPostsProvider.notifier).loadMoreForCategory(currentCategory);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            floating: true,
-            pinned: false,
-            snap: true,
-            backgroundColor: const Color.fromRGBO(17, 24, 39, 0.8),
-            title: HeaderBar(
-              onSearchChanged: (query) {
-                setState(() {
-                  searchQuery = query;
-                  isSearching = query.isNotEmpty;
-                });
-              },
+      body: RefreshIndicator(
+        onRefresh: () {
+          final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
+          return ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory);
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverAppBar(
+              floating: true,
+              pinned: false,
+              snap: true,
+              backgroundColor: const Color.fromRGBO(17, 24, 39, 0.8),
+              title: HeaderBar(
+                onSearchChanged: (query) {
+                  setState(() {
+                    searchQuery = query;
+                    isSearching = query.isNotEmpty;
+                  });
+                },
+              ),
+              automaticallyImplyLeading: false,
+              toolbarHeight: 80,
             ),
-            automaticallyImplyLeading: false,
-            toolbarHeight: 80,
-          ),
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: TrendingSectionDelegate(),
-          ),
-          SliverToBoxAdapter(
-            child: CategoryChips(
-              selectedCategory: selectedCategory,
-              onCategoryChanged: (category) {
-                setState(() {
-                  selectedCategory = category;
-                  // Clear search when selecting category
-                  if (category.isNotEmpty) {
-                    searchQuery = '';
-                    isSearching = false;
-                  }
-                });
-              },
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: TrendingSectionDelegate(),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: PostFeed(
+            SliverToBoxAdapter(
+              child: CategoryChips(
+                selectedCategory: selectedCategory,
+                onCategoryChanged: (category) {
+                  setState(() {
+                    selectedCategory = category;
+                    // Clear search when selecting category
+                    if (category.isNotEmpty) {
+                      searchQuery = '';
+                      isSearching = false;
+                    }
+                  });
+                },
+              ),
+            ),
+            PostFeedSliver(
               searchQuery: searchQuery,
               selectedCategory: selectedCategory,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -688,6 +718,147 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         backgroundColor: theme.colorScheme.primary,
         child: const FaIcon(FontAwesomeIcons.plus, color: Colors.white),
+      ),
+    );
+  }
+}
+
+// --- POST FEED ---
+
+
+class PostFeedSliver extends ConsumerWidget {
+  final String searchQuery;
+  final String selectedCategory;
+  const PostFeedSliver({super.key, this.searchQuery = '', this.selectedCategory = ''});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final postsState = ref.watch(paginatedPostsProvider);
+    
+    // Determine which category to load
+    final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
+    
+    // Ensure the category is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
+    });
+    
+    final categoryState = postsState.getCategoryState(currentCategory);
+
+    final horizontalPadding = MediaQuery.of(context).size.width > 800
+        ? (MediaQuery.of(context).size.width - 800) / 2
+        : 16.0;
+
+    // Error state
+    if (categoryState.error != null) {
+      return SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text('Error loading posts: ${categoryState.error}'),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    var filteredPosts = categoryState.posts;
+
+    // Apply search filter (category is already handled by loading specific category)
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
+      filteredPosts = filteredPosts.where((post) =>
+          post.title.toLowerCase().contains(query) ||
+          post.content.toLowerCase().contains(query) ||
+          post.category.toLowerCase().contains(query)).toList();
+    }
+
+    // Empty state
+    if (filteredPosts.isEmpty && !categoryState.isLoading) {
+      String emptyMessage;
+      IconData emptyIcon;
+      
+      if (searchQuery.isNotEmpty) {
+        if (currentCategory == 'all') {
+          emptyMessage = 'No posts found for "$searchQuery"';
+        } else {
+          emptyMessage = 'No posts found in "$selectedCategory" for "$searchQuery"';
+        }
+        emptyIcon = FontAwesomeIcons.magnifyingGlass;
+      } else if (currentCategory != 'all') {
+        emptyMessage = 'No posts yet in "$selectedCategory"\nBe the first to post!';
+        emptyIcon = FontAwesomeIcons.seedling;
+      } else {
+        emptyMessage = 'No posts yet\nBe the first to post!';
+        emptyIcon = FontAwesomeIcons.seedling;
+      }
+      
+      return SliverFillRemaining( // Use SliverFillRemaining to center content
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              FaIcon(emptyIcon, size: 64, color: Colors.grey.shade600),
+              const SizedBox(height: 16),
+              Text(
+                emptyMessage,
+                style: const TextStyle(fontSize: 18, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Loading state for initial load
+    if (filteredPosts.isEmpty && categoryState.isLoading) {
+      return const SliverFillRemaining( // Use SliverFillRemaining to center content
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading posts...', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 24.0,
+      ),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index == filteredPosts.length) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: PostCard(post: filteredPosts[index]),
+            );
+          },
+          childCount: filteredPosts.length + (categoryState.isLoading && categoryState.currentPage > 0 ? 1 : 0),
+        ),
       ),
     );
   }
@@ -1066,176 +1237,6 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
   double get minExtent => 40.0;
   @override
   bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => true;
-}
-
-// --- POST FEED ---
-class PostFeed extends ConsumerStatefulWidget {
-  final String searchQuery;
-  final String selectedCategory;
-  const PostFeed({super.key, this.searchQuery = '', this.selectedCategory = ''});
-
-  @override
-  ConsumerState<PostFeed> createState() => _PostFeedState();
-}
-
-class _PostFeedState extends ConsumerState<PostFeed> {
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
-    final postsState = ref.read(paginatedPostsProvider);
-    final categoryState = postsState.getCategoryState(currentCategory);
-    
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
-        !categoryState.isLoading) {
-      ref.read(paginatedPostsProvider.notifier).loadMoreForCategory(currentCategory);
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final postsState = ref.watch(paginatedPostsProvider);
-    
-    // Determine which category to load
-    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
-    
-    // Ensure the category is loaded
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
-    });
-    
-    final categoryState = postsState.getCategoryState(currentCategory);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final horizontalPadding = constraints.maxWidth > 800 
-            ? (constraints.maxWidth - 800) / 2 
-            : 16.0;
-
-        // Error state
-        if (categoryState.error != null) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const FaIcon(FontAwesomeIcons.triangleExclamation, color: Colors.red, size: 48),
-                  const SizedBox(height: 16),
-                  Text('Error loading posts: ${categoryState.error}'),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        var filteredPosts = categoryState.posts;
-
-        // Apply search filter (category is already handled by loading specific category)
-        if (widget.searchQuery.isNotEmpty) {
-          final query = widget.searchQuery.toLowerCase();
-          filteredPosts = filteredPosts.where((post) =>
-              post.title.toLowerCase().contains(query) ||
-              post.content.toLowerCase().contains(query) ||
-              post.category.toLowerCase().contains(query)).toList();
-        }
-
-        // Empty state
-        if (filteredPosts.isEmpty && !categoryState.isLoading) {
-          String emptyMessage;
-          IconData emptyIcon;
-          
-          if (widget.searchQuery.isNotEmpty) {
-            if (currentCategory == 'all') {
-              emptyMessage = 'No posts found for "${widget.searchQuery}"';
-            } else {
-              emptyMessage = 'No posts found in "${widget.selectedCategory}" for "${widget.searchQuery}"';
-            }
-            emptyIcon = FontAwesomeIcons.magnifyingGlass;
-          } else if (currentCategory != 'all') {
-            emptyMessage = 'No posts yet in "${widget.selectedCategory}"\nBe the first to post!';
-            emptyIcon = FontAwesomeIcons.seedling;
-          } else {
-            emptyMessage = 'No posts yet\nBe the first to post!';
-            emptyIcon = FontAwesomeIcons.seedling;
-          }
-          
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                FaIcon(emptyIcon, size: 64, color: Colors.grey.shade600),
-                const SizedBox(height: 16),
-                Text(
-                  emptyMessage,
-                  style: const TextStyle(fontSize: 18, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Loading state for initial load
-        if (filteredPosts.isEmpty && categoryState.isLoading) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Loading posts...', style: TextStyle(color: Colors.grey)),
-              ],
-            ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () => ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: horizontalPadding,
-              vertical: 24.0,
-            ),
-            child: ListView.builder(
-              controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(),  // Ensures refresh works even if not scrollable
-              itemCount: filteredPosts.length + (categoryState.isLoading && categoryState.currentPage > 0 ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == filteredPosts.length) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: PostCard(post: filteredPosts[index]),
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
 // --- POST CARD ---
