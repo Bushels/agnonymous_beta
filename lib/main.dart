@@ -222,6 +222,12 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
     state = state.copyWith(categoryStates: updatedCategoryStates);
 
     try {
+      // Debug: Check if we're authenticated
+      final user = supabase.auth.currentUser;
+      print('=== AUTH DEBUG ===');
+      print('Current user: ${user?.id}');
+      print('Is authenticated: ${user != null}');
+      
       var query = supabase
           .from('posts')
           .select('*');
@@ -231,9 +237,17 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
         query = query.eq('category', category);
       }
 
+      print('=== QUERY DEBUG ===');
+      print('Fetching posts for category: $category');
+      print('Page: $pageToLoad, Page size: $_pageSize');
+      
       final data = await query
           .order('created_at', ascending: false)
           .range(pageToLoad * _pageSize, (pageToLoad + 1) * _pageSize - 1);
+      
+      print('Raw data type: ${data.runtimeType}');
+      print('Raw data: $data');
+      
       final newPosts = (data as List).map((map) => Post.fromMap(map)).toList();
 
       // Debug logging
@@ -264,8 +278,11 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
 
       print('Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
       print('=== END CATEGORY PAGINATION DEBUG ===');
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('=== ERROR LOADING POSTS ===');
       print('Error loading posts for category $category: $e');
+      print('Stack trace: $stackTrace');
+      print('Error type: ${e.runtimeType}');
       final errorCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
       errorCategoryStates[category] = categoryState.copyWith(isLoading: false, error: e.toString());
       state = state.copyWith(categoryStates: errorCategoryStates);
@@ -277,8 +294,23 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
   
   // Method to ensure category is loaded
   void ensureCategoryLoaded(String category) {
+    print('=== ENSURE CATEGORY LOADED ===');
+    print('Category: $category');
+    print('Current state keys: ${state.categoryStates.keys.toList()}');
+    print('Category exists in state: ${state.categoryStates.containsKey(category)}');
+    
     if (!state.categoryStates.containsKey(category)) {
+      print('Loading initial posts for category: $category');
       loadPostsForCategory(category, isInitial: true);
+    } else {
+      final categoryState = state.getCategoryState(category);
+      print('Category already loaded: posts=${categoryState.posts.length}, isLoading=${categoryState.isLoading}');
+      
+      // If we have no posts and not loading, try to reload
+      if (categoryState.posts.isEmpty && !categoryState.isLoading && categoryState.error == null) {
+        print('Category is empty and not loading, reloading...');
+        loadPostsForCategory(category, isInitial: true);
+      }
     }
   }
 
@@ -533,12 +565,40 @@ Future<void> main() async {
       throw Exception('Supabase credentials not found. Please check environment variables or .env file.');
     }
 
+    print('=== SUPABASE INIT DEBUG ===');
+    print('Supabase URL: $supabaseUrl');
+    print('Supabase Key: ${supabaseAnonKey?.substring(0, 20)}...');
+    
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
     
-    await supabase.auth.signInAnonymously();
+    print('Supabase initialized successfully');
+    
+    try {
+      // Try to get existing session first
+      final session = supabase.auth.currentSession;
+      if (session == null) {
+        print('No existing session, signing in anonymously...');
+        final authResponse = await supabase.auth.signInAnonymously();
+        print('Anonymous auth successful: ${authResponse.user?.id}');
+      } else {
+        print('Using existing session: ${session.user.id}');
+      }
+    } catch (authError) {
+      print('Anonymous auth error: $authError');
+      // Continue anyway, posts might be publicly accessible
+    }
+    
+    // Test connection with a simple query
+    try {
+      print('Testing Supabase connection...');
+      final testResult = await supabase.from('posts').select('count').limit(1);
+      print('Connection test successful: $testResult');
+    } catch (connectionError) {
+      print('Connection test failed: $connectionError');
+    }
     
     runApp(const ProviderScope(child: AgnonymousApp()));
   } catch (e) {
@@ -726,24 +786,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 // --- POST FEED ---
 
 
-class PostFeedSliver extends ConsumerWidget {
+class PostFeedSliver extends ConsumerStatefulWidget {
   final String searchQuery;
   final String selectedCategory;
   const PostFeedSliver({super.key, this.searchQuery = '', this.selectedCategory = ''});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PostFeedSliver> createState() => _PostFeedSliverState();
+}
+
+class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
+  String? _lastCategory;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initial load for 'all' category
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCurrentCategory();
+    });
+  }
+
+  @override
+  void didUpdateWidget(PostFeedSliver oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Load new category when it changes
+    if (oldWidget.selectedCategory != widget.selectedCategory) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadCurrentCategory();
+      });
+    }
+  }
+
+  void _loadCurrentCategory() {
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
+    if (_lastCategory != currentCategory) {
+      _lastCategory = currentCategory;
+      print('=== LOADING CATEGORY: $currentCategory ===');
+      ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final postsState = ref.watch(paginatedPostsProvider);
     
-    // Determine which category to load
-    final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
-    
-    // Ensure the category is loaded
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
-    });
-    
+    // Determine which category to display
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
     final categoryState = postsState.getCategoryState(currentCategory);
+    
+    print('=== BUILD DEBUG ===');
+    print('Current category: $currentCategory');
+    print('Category state: isLoading=${categoryState.isLoading}, posts=${categoryState.posts.length}, hasMore=${categoryState.hasMore}');
+    print('Error: ${categoryState.error}');
 
     final horizontalPadding = MediaQuery.of(context).size.width > 800
         ? (MediaQuery.of(context).size.width - 800) / 2
@@ -776,8 +871,8 @@ class PostFeedSliver extends ConsumerWidget {
     var filteredPosts = categoryState.posts;
 
     // Apply search filter (category is already handled by loading specific category)
-    if (searchQuery.isNotEmpty) {
-      final query = searchQuery.toLowerCase();
+    if (widget.searchQuery.isNotEmpty) {
+      final query = widget.searchQuery.toLowerCase();
       filteredPosts = filteredPosts.where((post) =>
           post.title.toLowerCase().contains(query) ||
           post.content.toLowerCase().contains(query) ||
@@ -789,15 +884,15 @@ class PostFeedSliver extends ConsumerWidget {
       String emptyMessage;
       IconData emptyIcon;
       
-      if (searchQuery.isNotEmpty) {
+      if (widget.searchQuery.isNotEmpty) {
         if (currentCategory == 'all') {
-          emptyMessage = 'No posts found for "$searchQuery"';
+          emptyMessage = 'No posts found for "${widget.searchQuery}"';
         } else {
-          emptyMessage = 'No posts found in "$selectedCategory" for "$searchQuery"';
+          emptyMessage = 'No posts found in "${widget.selectedCategory}" for "${widget.searchQuery}"';
         }
         emptyIcon = FontAwesomeIcons.magnifyingGlass;
       } else if (currentCategory != 'all') {
-        emptyMessage = 'No posts yet in "$selectedCategory"\nBe the first to post!';
+        emptyMessage = 'No posts yet in "${widget.selectedCategory}"\nBe the first to post!';
         emptyIcon = FontAwesomeIcons.seedling;
       } else {
         emptyMessage = 'No posts yet\nBe the first to post!';
