@@ -16,6 +16,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
   String _selectedCategory = 'Farming';
+  String? _selectedProvinceState;
   bool _isLoading = false;
 
   final List<Map<String, String>> _categories = [
@@ -55,6 +56,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         'title': _titleController.text.trim(),
         'content': _contentController.text.trim(),
         'category': _selectedCategory,
+        'province_state': _selectedProvinceState,
       });
 
       // Refresh the posts feed
@@ -139,6 +141,52 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                   },
                 );
               }).toList(),
+            ),
+            const SizedBox(height: 24),
+
+            // Province/State Selection
+            Text(
+              'Select Province/State (Optional)',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[300],
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _selectedProvinceState,
+              decoration: InputDecoration(
+                hintText: 'Choose your province/state',
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                hintStyle: TextStyle(color: Colors.grey[400]),
+              ),
+              dropdownColor: theme.colorScheme.surface,
+              style: const TextStyle(color: Colors.white),
+              icon: const FaIcon(
+                FontAwesomeIcons.chevronDown,
+                color: Colors.grey,
+                size: 16,
+              ),
+              items: PROVINCES_STATES.map((String province) {
+                return DropdownMenuItem<String>(
+                  value: province,
+                  child: Text(
+                    province,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedProvinceState = newValue;
+                });
+              },
             ),
             const SizedBox(height: 24),
 

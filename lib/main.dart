@@ -13,12 +13,38 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // --- SUPABASE CLIENT ---
 final supabase = Supabase.instance.client;
 
+// --- CONSTANTS ---
+const List<String> PROVINCES_STATES = [
+  'Alberta',
+  'British Columbia',
+  'Manitoba',
+  'New Brunswick',
+  'Newfoundland and Labrador',
+  'Northwest Territories',
+  'Nova Scotia',
+  'Nunavut',
+  'Ontario',
+  'Prince Edward Island',
+  'Quebec',
+  'Saskatchewan',
+  'Yukon',
+  // US States (common ones)
+  'California',
+  'Texas',
+  'Florida',
+  'New York',
+  'Illinois',
+  'Pennsylvania',
+  'Other/International',
+];
+
 // --- DATA MODELS ---
 class Post {
   final String id;
   final String title;
   final String content;
   final String category;
+  final String? provinceState;
   final DateTime createdAt;
   final int commentCount;
   final int voteCount;
@@ -28,6 +54,7 @@ class Post {
     required this.title,
     required this.content,
     required this.category,
+    this.provinceState,
     required this.createdAt,
     required this.commentCount,
     required this.voteCount,
@@ -39,6 +66,7 @@ class Post {
       title: map['title'] ?? 'Untitled',
       content: map['content'] ?? '',
       category: map['category'] ?? 'General',
+      provinceState: map['province_state'],
       createdAt: DateTime.parse(map['created_at']),
       commentCount: map['comment_count'] ?? 0,
       voteCount: map['vote_count'] ?? 0,
@@ -63,22 +91,25 @@ class Comment {
 }
 
 class VoteStats {
-  final int trueVotes;
+  final int thumbsUpVotes;
   final int partialVotes;
-  final int falseVotes;
+  final int thumbsDownVotes;
+  final int funnyVotes;
   final int totalVotes;
 
   VoteStats({
-    required this.trueVotes,
+    required this.thumbsUpVotes,
     required this.partialVotes,
-    required this.falseVotes,
-  }) : totalVotes = trueVotes + partialVotes + falseVotes;
+    required this.thumbsDownVotes,
+    required this.funnyVotes,
+  }) : totalVotes = thumbsUpVotes + partialVotes + thumbsDownVotes + funnyVotes;
 
   factory VoteStats.fromMap(Map<String, dynamic> map) {
     return VoteStats(
-      trueVotes: (map['true_votes'] ?? 0).toInt(),
+      thumbsUpVotes: (map['thumbs_up_votes'] ?? 0).toInt(),
       partialVotes: (map['partial_votes'] ?? 0).toInt(),
-      falseVotes: (map['false_votes'] ?? 0).toInt(),
+      thumbsDownVotes: (map['thumbs_down_votes'] ?? 0).toInt(),
+      funnyVotes: (map['funny_votes'] ?? 0).toInt(),
     );
   }
 }
@@ -246,14 +277,30 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
           .range(pageToLoad * _pageSize, (pageToLoad + 1) * _pageSize - 1);
       
       print('Raw data type: ${data.runtimeType}');
-      print('Raw data: $data');
+      print('Raw data (first 3 posts): ${data.take(3).toList()}');
+      
+      // Check comment_count values in raw data
+      for (final item in data.take(3)) {
+        print('Raw DB - Post ${item['id']}: comment_count = ${item['comment_count']} (${item['comment_count'].runtimeType})');
+      }
       
       final newPosts = (data as List).map((map) => Post.fromMap(map)).toList();
+      
+      // Check comment_count values in Post objects
+      for (final post in newPosts.take(3)) {
+        print('Post object ${post.id}: commentCount = ${post.commentCount}');
+      }
 
       // Debug logging
       print('=== CATEGORY PAGINATION DEBUG ===');
       print('Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
       print('Current state: ${categoryState.posts.length} posts, hasMore: ${categoryState.hasMore}');
+      
+      // Debug comment counts specifically
+      print('=== COMMENT COUNT DEBUG ===');
+      for (final post in newPosts.take(5)) {
+        print('Post "${post.title}": commentCount=${post.commentCount}');
+      }
 
       // Deduplicate by ID to handle real-time inserts without duplicates
       final Set<String> existingIds = categoryState.posts.map((p) => p.id).toSet();
@@ -315,31 +362,16 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
   }
 
   void _initRealTime() {
+    // Subscribe to new posts being inserted
     _postsChannel = supabase
-        .channel('posts_all_changes')
+        .channel('new_posts')
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
+          event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'posts',
           callback: (payload) {
-            print('Posts table changed: ${payload.eventType}');
-            // Refresh all loaded categories
-            for (final category in state.categoryStates.keys) {
-              refreshCategory(category);
-            }
-          },
-        )
-        .subscribe();
-
-    _commentsChannel = supabase
-        .channel('comments_changes')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'comments',
-          callback: (payload) {
-            print('Comment change detected: ${payload.eventType}');
-            // Refresh all loaded categories to update comment counts
+            print('New post inserted, refreshing categories');
+            // Refresh all loaded categories for new posts
             for (final category in state.categoryStates.keys) {
               refreshCategory(category);
             }
@@ -351,7 +383,6 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
   @override
   void dispose() {
     _postsChannel?.unsubscribe();
-    _commentsChannel?.unsubscribe();
     super.dispose();
   }
 }
@@ -398,7 +429,7 @@ final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId)
       if (const bool.fromEnvironment('dart.vm.product') == false) {
         debugPrint('Error fetching vote stats: $e');
       }
-      controller.add(VoteStats(trueVotes: 0, partialVotes: 0, falseVotes: 0));
+      controller.add(VoteStats(thumbsUpVotes: 0, partialVotes: 0, thumbsDownVotes: 0, funnyVotes: 0));
     }
   }
 
@@ -1335,16 +1366,69 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
 }
 
 // --- POST CARD ---
-class PostCard extends StatefulWidget {
+class PostCard extends ConsumerStatefulWidget {
   final Post post;
   const PostCard({super.key, required this.post});
 
   @override
-  State<PostCard> createState() => _PostCardState();
+  ConsumerState<PostCard> createState() => _PostCardState();
 }
 
-class _PostCardState extends State<PostCard> {
+class _PostCardState extends ConsumerState<PostCard> {
   bool _isCommentsExpanded = false;
+  RealtimeChannel? _postChannel;
+  int _currentCommentCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentCommentCount = widget.post.commentCount;
+    print('PostCard initState: Post ${widget.post.id} initial comment count: $_currentCommentCount');
+    _subscribeToPostChanges();
+  }
+
+  void _subscribeToPostChanges() {
+    print('Setting up real-time subscription for post: ${widget.post.id}');
+    _postChannel = supabase
+        .channel('post-comments-${widget.post.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'posts',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.post.id,
+          ),
+          callback: (payload) {
+            print('🔥 REAL-TIME UPDATE for post ${widget.post.id}');
+            print('Payload: ${payload.newRecord}');
+            final newCommentCount = payload.newRecord?['comment_count'] as int?;
+            if (newCommentCount != null && mounted) {
+              print('Updating UI: ${_currentCommentCount} → $newCommentCount');
+              setState(() {
+                _currentCommentCount = newCommentCount;
+              });
+            }
+          },
+        )
+        .subscribe();
+    
+    print('✅ Set up subscription for post ${widget.post.id}');
+  }
+
+  // Option C: Optimistic update for immediate feedback
+  void _optimisticallyUpdateCommentCount() {
+    setState(() {
+      _currentCommentCount = _currentCommentCount + 1;
+    });
+  }
+
+  @override
+  void dispose() {
+    _postChannel?.unsubscribe();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1371,12 +1455,38 @@ class _PostCardState extends State<PostCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.post.category,
-                        style: TextStyle(
-                          color: Colors.blueGrey.shade200,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            widget.post.category,
+                            style: TextStyle(
+                              color: Colors.blueGrey.shade200,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (widget.post.provinceState != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                widget.post.provinceState!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       Text(
                         DateFormat.yMMMd().add_jm().format(widget.post.createdAt),
@@ -1428,7 +1538,7 @@ class _PostCardState extends State<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text('${widget.post.commentCount} Comments'),
+                label: Text('$_currentCommentCount Comments'),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1446,7 +1556,7 @@ class _PostCardState extends State<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text('${widget.post.commentCount} Comments'),
+                label: Text('$_currentCommentCount Comments'),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1497,9 +1607,9 @@ class TruthMeter extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(10),
                 child: Row(
                   children: [
-                    if (stats.trueVotes > 0)
+                    if (stats.thumbsUpVotes > 0)
                       _MeterSegment(
-                        value: stats.trueVotes / stats.totalVotes,
+                        value: stats.thumbsUpVotes / stats.totalVotes,
                         color: theme.colorScheme.primary,
                       ),
                     if (stats.partialVotes > 0)
@@ -1507,10 +1617,15 @@ class TruthMeter extends ConsumerWidget {
                         value: stats.partialVotes / stats.totalVotes,
                         color: theme.colorScheme.secondary,
                       ),
-                    if (stats.falseVotes > 0)
+                    if (stats.thumbsDownVotes > 0)
                       _MeterSegment(
-                        value: stats.falseVotes / stats.totalVotes,
+                        value: stats.thumbsDownVotes / stats.totalVotes,
                         color: theme.colorScheme.error,
+                      ),
+                    if (stats.funnyVotes > 0)
+                      _MeterSegment(
+                        value: stats.funnyVotes / stats.totalVotes,
+                        color: Colors.purple,
                       ),
                   ],
                 ),
@@ -1520,9 +1635,10 @@ class TruthMeter extends ConsumerWidget {
                 spacing: 16,
                 runSpacing: 4,
                 children: [
-                  _buildLabel('True', stats.trueVotes, stats.totalVotes, theme.colorScheme.primary),
+                  _buildLabel('Thumbs Up', stats.thumbsUpVotes, stats.totalVotes, theme.colorScheme.primary),
                   _buildLabel('Partial', stats.partialVotes, stats.totalVotes, theme.colorScheme.secondary),
-                  _buildLabel('False', stats.falseVotes, stats.totalVotes, theme.colorScheme.error),
+                  _buildLabel('Thumbs Down', stats.thumbsDownVotes, stats.totalVotes, theme.colorScheme.error),
+                  _buildLabel('Funny', stats.funnyVotes, stats.totalVotes, Colors.purple),
                 ],
               ),
             ],
@@ -1607,10 +1723,23 @@ class _VoteButtonsState extends ConsumerState<VoteButtons> {
         'vote_type_in': voteType,
       });
 
+      // Refresh categories to pick up the vote count change from database trigger
+      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      for (final category in currentCategories) {
+        ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
+      }
+
       if (mounted) {
+        final voteEmoji = {
+          'thumbs_up': '👍',
+          'partial': '🤔',
+          'thumbs_down': '👎',
+          'funny': '😂',
+        }[voteType] ?? '';
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Vote "$voteType" cast successfully!'),
+            content: Text('$voteEmoji Vote cast successfully!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -1642,32 +1771,40 @@ class _VoteButtonsState extends ConsumerState<VoteButtons> {
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 400;
+    final isCompact = MediaQuery.of(context).size.width < 450;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildVoteButton(
-          voteType: 'true',
-          icon: FontAwesomeIcons.check,
-          label: 'True',
+          voteType: 'thumbs_up',
+          icon: FontAwesomeIcons.thumbsUp,
+          label: 'Thumbs Up',
           color: theme.colorScheme.primary,
           isCompact: isCompact,
         ),
         const SizedBox(width: 4),
         _buildVoteButton(
           voteType: 'partial',
-          icon: FontAwesomeIcons.triangleExclamation,
+          icon: FontAwesomeIcons.circleQuestion,
           label: 'Partial',
           color: theme.colorScheme.secondary,
           isCompact: isCompact,
         ),
         const SizedBox(width: 4),
         _buildVoteButton(
-          voteType: 'false',
-          icon: FontAwesomeIcons.xmark,
-          label: 'False',
+          voteType: 'thumbs_down',
+          icon: FontAwesomeIcons.thumbsDown,
+          label: 'Thumbs Down',
           color: theme.colorScheme.error,
+          isCompact: isCompact,
+        ),
+        const SizedBox(width: 4),
+        _buildVoteButton(
+          voteType: 'funny',
+          icon: FontAwesomeIcons.faceGrinSquintTears,
+          label: 'Funny',
+          color: Colors.purple,
           isCompact: isCompact,
         ),
       ],
@@ -1688,10 +1825,10 @@ class _VoteButtonsState extends ConsumerState<VoteButtons> {
       style: ElevatedButton.styleFrom(
         backgroundColor: color.withOpacity(0.8),
         foregroundColor: Colors.white,
-        minimumSize: isCompact ? const Size(60, 32) : null,
+        minimumSize: isCompact ? const Size(50, 32) : null,
         padding: isCompact 
-            ? const EdgeInsets.symmetric(horizontal: 8)
-            : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ? const EdgeInsets.symmetric(horizontal: 6)
+            : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
       child: isLoading
           ? const SizedBox(
@@ -1702,16 +1839,7 @@ class _VoteButtonsState extends ConsumerState<VoteButtons> {
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
             )
-          : isCompact
-              ? FaIcon(icon, size: 14)
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FaIcon(icon, size: 14),
-                    const SizedBox(width: 6),
-                    Text(label),
-                  ],
-                ),
+          : FaIcon(icon, size: 14), // Always show just the icon, no text labels
     );
   }
 }
@@ -1745,6 +1873,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw 'Not authenticated';
 
+      // Insert comment
       await supabase.from('comments').insert({
         'post_id': widget.postId,
         'anonymous_user_id': userId,
@@ -1753,9 +1882,21 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       
       _commentController.clear();
       
-      // Force refresh of posts to update comment count (invalidate + refresh for emulator reliability)
-      ref.invalidate(postsProvider);
-      ref.refresh(postsProvider);
+      // Option B: Manually refetch the post to ensure UI updates
+      print('Comment inserted, refetching post data...');
+      final updatedPostResult = await supabase
+          .from('posts')
+          .select('*')
+          .eq('id', widget.postId)
+          .single();
+      
+      print('Updated post comment_count: ${updatedPostResult['comment_count']}');
+      
+      // Force refresh categories to pick up the changes
+      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      for (final category in currentCategories) {
+        ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
