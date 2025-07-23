@@ -1,5 +1,6 @@
 {
   "projects": {
+    "default": "agnonymousbeta",
     "beta": "agnonymousbeta"
   },
   "targets": {},
