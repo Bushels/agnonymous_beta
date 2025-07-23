@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:html' as html;
 import 'dart:js' as js;
 import 'dart:math' as math;
 import 'package:agnonymous_beta/create_post_screen.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -238,7 +240,6 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
   final Ref ref;
   final int _pageSize = 50;  // 50 posts per category for better coverage
   RealtimeChannel? _postsChannel;
-  RealtimeChannel? _commentsChannel;
 
   Future<void> loadPostsForCategory(String category, {bool isInitial = false, bool isRefresh = false}) async {
     final categoryState = state.getCategoryState(category);
@@ -302,15 +303,21 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
         print('Post "${post.title}": commentCount=${post.commentCount}');
       }
 
-      // Deduplicate by ID to handle real-time inserts without duplicates
-      final Set<String> existingIds = categoryState.posts.map((p) => p.id).toSet();
-      final filteredNewPosts = newPosts.where((p) => !existingIds.contains(p.id)).toList();
-
-      final updatedPosts = isInitial
-          ? filteredNewPosts  // Initial load: use new posts directly
-          : isRefresh 
-              ? [...filteredNewPosts, ...categoryState.posts]  // Prepend new for refreshes
-              : [...categoryState.posts, ...filteredNewPosts];  // Append for load more
+      final List<Post> updatedPosts;
+      if (isRefresh) {
+        // On refresh, merge new posts with old, prioritizing new ones to show updates.
+        final newPostsMap = {for (var p in newPosts) p.id: p};
+        final oldPostsFiltered = categoryState.posts.where((p) => !newPostsMap.containsKey(p.id));
+        updatedPosts = [...newPosts, ...oldPostsFiltered];
+        updatedPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Ensure order is correct
+      } else {
+        // For initial load or load more, just add new posts that aren't already there.
+        final existingIds = categoryState.posts.map((p) => p.id).toSet();
+        final filteredNewPosts = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+        updatedPosts = isInitial
+            ? filteredNewPosts
+            : [...categoryState.posts, ...filteredNewPosts];
+      }
 
       final newCategoryState = categoryState.copyWith(
         posts: updatedPosts,
@@ -374,6 +381,36 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
             // Refresh all loaded categories for new posts
             for (final category in state.categoryStates.keys) {
               refreshCategory(category);
+            }
+          },
+        )
+        // NEW: Subscribe to updates on posts (e.g., comment_count or vote_count changes)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'posts',
+          // No filter here to avoid UUID filtering issues in Supabase real-time
+          callback: (payload) {
+            print('🔥 REAL-TIME POST UPDATE: Payload: $payload');
+            final newMap = payload.newRecord;
+            if (newMap != null) {
+              final updatedPost = Post.fromMap(newMap as Map<String, dynamic>);
+              print('Updating post ${updatedPost.id} with new comment_count: ${updatedPost.commentCount}');
+
+              // Update the post in all loaded category states where it exists
+              final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+              for (final entry in updatedCategoryStates.entries) {
+                final cat = entry.key;
+                final catState = entry.value;
+                final postIndex = catState.posts.indexWhere((p) => p.id == updatedPost.id);
+                if (postIndex != -1) {
+                  final updatedPosts = List<Post>.from(catState.posts);
+                  updatedPosts[postIndex] = updatedPost;  // Replace with updated post
+                  updatedCategoryStates[cat] = catState.copyWith(posts: updatedPosts);
+                  print('Updated post in category "$cat" at index $postIndex');
+                }
+              }
+              state = state.copyWith(categoryStates: updatedCategoryStates);
             }
           },
         )
@@ -980,7 +1017,7 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
             }
             return Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
-              child: PostCard(post: filteredPosts[index]),
+              child: PostCard(key: ValueKey(filteredPosts[index].id), post: filteredPosts[index]),
             );
           },
           childCount: filteredPosts.length + (categoryState.isLoading && categoryState.currentPage > 0 ? 1 : 0),
@@ -1376,59 +1413,6 @@ class PostCard extends ConsumerStatefulWidget {
 
 class _PostCardState extends ConsumerState<PostCard> {
   bool _isCommentsExpanded = false;
-  RealtimeChannel? _postChannel;
-  int _currentCommentCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentCommentCount = widget.post.commentCount;
-    print('PostCard initState: Post ${widget.post.id} initial comment count: $_currentCommentCount');
-    _subscribeToPostChanges();
-  }
-
-  void _subscribeToPostChanges() {
-    print('Setting up real-time subscription for post: ${widget.post.id}');
-    _postChannel = supabase
-        .channel('post-comments-${widget.post.id}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'posts',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: widget.post.id,
-          ),
-          callback: (payload) {
-            print('🔥 REAL-TIME UPDATE for post ${widget.post.id}');
-            print('Payload: ${payload.newRecord}');
-            final newCommentCount = payload.newRecord?['comment_count'] as int?;
-            if (newCommentCount != null && mounted) {
-              print('Updating UI: ${_currentCommentCount} → $newCommentCount');
-              setState(() {
-                _currentCommentCount = newCommentCount;
-              });
-            }
-          },
-        )
-        .subscribe();
-    
-    print('✅ Set up subscription for post ${widget.post.id}');
-  }
-
-  // Option C: Optimistic update for immediate feedback
-  void _optimisticallyUpdateCommentCount() {
-    setState(() {
-      _currentCommentCount = _currentCommentCount + 1;
-    });
-  }
-
-  @override
-  void dispose() {
-    _postChannel?.unsubscribe();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1538,7 +1522,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text('$_currentCommentCount Comments'),
+                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1556,7 +1540,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text('$_currentCommentCount Comments'),
+                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1882,17 +1866,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       
       _commentController.clear();
       
-      // Option B: Manually refetch the post to ensure UI updates
-      print('Comment inserted, refetching post data...');
-      final updatedPostResult = await supabase
-          .from('posts')
-          .select('*')
-          .eq('id', widget.postId)
-          .single();
-      
-      print('Updated post comment_count: ${updatedPostResult['comment_count']}');
-      
-      // Force refresh categories to pick up the changes
+      // Force refresh categories to pick up the updated comment count
       final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
