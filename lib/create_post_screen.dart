@@ -209,7 +209,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter a title';
                 }
-                if (value.trim().length < 1) {
+                if (value.trim().isEmpty) {
                   return 'Title must be at least 1 character';
                 }
                 if (value.trim().length > 100) {
