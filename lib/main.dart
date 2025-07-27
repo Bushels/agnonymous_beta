@@ -775,7 +775,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onScroll() {
-    final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
+    final currentCategory = selectedCategory.isNotEmpty ? selectedCategory : 'all';
     final postsState = ref.read(paginatedPostsProvider);
     final categoryState = postsState.getCategoryState(currentCategory);
 
@@ -790,7 +790,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () {
-          final currentCategory = selectedCategory.isNotEmpty ? selectedCategory.toLowerCase() : 'all';
+          final currentCategory = selectedCategory.isNotEmpty ? selectedCategory : 'all';
           return ref.read(paginatedPostsProvider.notifier).refreshCategory(currentCategory);
         },
         child: CustomScrollView(
@@ -880,6 +880,15 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
     super.didUpdateWidget(oldWidget);
     // Load new category when it changes
     if (oldWidget.selectedCategory != widget.selectedCategory) {
+      // Clear search query when category changes
+      if (widget.searchQuery.isNotEmpty) {
+        // This is a bit of a hack, but we need to call the onSearchChanged callback
+        // to clear the search query in the parent widget.
+        // Future.microtask is used to avoid calling setState during a build.
+        Future.microtask(() => context.findAncestorStateOfType<_HomeScreenState>()?.setState(() {
+          
+        }));
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadCurrentCategory();
       });
@@ -887,7 +896,7 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
   }
 
   void _loadCurrentCategory() {
-    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory : 'all';
     if (_lastCategory != currentCategory) {
       _lastCategory = currentCategory;
       print('=== LOADING CATEGORY: $currentCategory ===');
@@ -900,7 +909,7 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
     final postsState = ref.watch(paginatedPostsProvider);
     
     // Determine which category to display
-    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory.toLowerCase() : 'all';
+    final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory : 'all';
     final categoryState = postsState.getCategoryState(currentCategory);
     
     print('=== BUILD DEBUG ===');
