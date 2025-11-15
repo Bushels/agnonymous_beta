@@ -51,10 +51,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         throw 'User not authenticated. Cannot create post.';
       }
       
+      // Sanitize user input to prevent XSS attacks
+      final sanitizedTitle = sanitizeInput(_titleController.text);
+      final sanitizedContent = sanitizeInput(_contentController.text);
+
+      // Validate sanitized input
+      if (sanitizedTitle.isEmpty || sanitizedContent.length < 10) {
+        throw 'Invalid input after sanitization';
+      }
+
       await supabase.from('posts').insert({
         'anonymous_user_id': userId,
-        'title': _titleController.text.trim(),
-        'content': _contentController.text.trim(),
+        'title': sanitizedTitle,
+        'content': sanitizedContent,
         'category': _selectedCategory,
         'province_state': _selectedProvinceState,
       });
