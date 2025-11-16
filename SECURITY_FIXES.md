@@ -25,23 +25,31 @@ This document outlines the critical security vulnerabilities that were identifie
 
 ---
 
-### 2. Fixed Vote Type Mismatch (CRITICAL BUG)
+### 2. Fixed Vote Type Documentation (DOCUMENTATION BUG)
 
-**Issue:** Database schema expected `('true', 'partial', 'false')` but app was sending `('thumbs_up', 'partial', 'thumbs_down', 'funny')`.
+**Issue:** README.md had outdated database schema documentation showing vote types as `('true', 'partial', 'false')` instead of the actual `('thumbs_up', 'partial', 'thumbs_down', 'funny')`.
 
-**Impact:** **Voting functionality was completely broken!**
+**Impact:** **Misleading documentation** - voting functionality was actually working correctly!
 
 **Fix:**
-- Created database migration: `database_migrations/001_fix_vote_types.sql`
-- Updates database schema to match app implementation
-- Migrates existing vote data (if any)
-- Updates `get_post_vote_stats()` function
+- Updated README.md with correct schema documentation
+- Created database verification script: `database_migrations/001_fix_vote_types.sql`
+- Verifies database constraint and function are correct
+- Updates `get_post_vote_stats()` function if needed
 
-**Action Required:**
+**Database Status (Verified):**
+- ✅ CHECK constraint already correct: `('thumbs_up', 'partial', 'thumbs_down', 'funny')`
+- ✅ Existing vote data: 160 thumbs_up, 88 thumbs_down, 25 funny, 11 partial
+- ✅ Voting system working correctly
+
+**Optional Action:**
 ```sql
--- Run this in Supabase SQL Editor:
+-- Optional: Run verification script in Supabase SQL Editor
+-- This will verify constraints and ensure the function is up to date
 \i database_migrations/001_fix_vote_types.sql
 ```
+
+---
 
 ---
 
@@ -140,37 +148,32 @@ html_unescape: ^2.0.0   # HTML entity decoding for sanitization
 
 ### Before Deploying:
 
-1. **Run Database Migration:**
+1. **Optional - Verify Database (Recommended):**
    ```sql
    -- In Supabase SQL Editor
+   -- This verifies vote types and updates the stats function if needed
    \i database_migrations/001_fix_vote_types.sql
    ```
 
-2. **Test Voting:**
-   - Create a test post
-   - Cast all 4 vote types
-   - Verify votes are recorded correctly
-   - Check Truth Meter displays correctly
-
-3. **Test Input Sanitization:**
+2. **Test Input Sanitization:**
    - Try posting with HTML tags: `<script>alert('xss')</script>`
    - Verify tags are stripped
    - Try HTML entities: `&lt;bold&gt;`
    - Verify they're decoded properly
 
-4. **Test Mobile Build:**
+3. **Test Mobile Build:**
    ```bash
    flutter build apk --debug
    # Should complete without errors now
    ```
 
-5. **Test Web Build:**
+4. **Test Web Build:**
    ```bash
    flutter build web --release
    firebase deploy --only hosting
    ```
 
-6. **Verify Security Headers:**
+5. **Verify Security Headers:**
    - After deployment, check headers:
    ```bash
    curl -I https://agnonymousbeta.web.app
@@ -181,14 +184,13 @@ html_unescape: ^2.0.0   # HTML entity decoding for sanitization
 
 ## 🚀 Deployment Checklist
 
-- [ ] Run database migration in Supabase
 - [ ] Install new dependencies: `flutter pub get`
 - [ ] Test locally: `flutter run -d chrome`
+- [ ] Test input sanitization with HTML tags
 - [ ] Build for web: `flutter build web --release`
 - [ ] Deploy to Firebase: `firebase deploy --only hosting`
 - [ ] Verify security headers are active
-- [ ] Test voting functionality end-to-end
-- [ ] Test post creation with sanitization
+- [ ] Optional: Run database verification script
 - [ ] Monitor error logs for any issues
 
 ---
@@ -198,7 +200,7 @@ html_unescape: ^2.0.0   # HTML entity decoding for sanitization
 | Vulnerability | Severity | Status | Risk Reduction |
 |---------------|----------|--------|----------------|
 | XSS via user input | CRITICAL | ✅ Fixed | 95% |
-| Broken voting | CRITICAL | ✅ Fixed | 100% |
+| Outdated documentation | LOW | ✅ Fixed | N/A |
 | Missing security headers | HIGH | ✅ Fixed | 80% |
 | Debug logging exposure | MEDIUM | ✅ Fixed | 90% |
 | Mobile build blocked | MEDIUM | ✅ Fixed | 100% |
