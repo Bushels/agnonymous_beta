@@ -248,7 +248,7 @@ CREATE TABLE truth_votes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
   anonymous_user_id TEXT NOT NULL,
-  vote_type TEXT CHECK (vote_type IN ('true', 'partial', 'false')),
+  vote_type TEXT CHECK (vote_type IN ('thumbs_up', 'partial', 'thumbs_down', 'funny')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(post_id, anonymous_user_id)
 );
@@ -272,17 +272,19 @@ CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
 -- #############################################################################
 CREATE OR REPLACE FUNCTION get_post_vote_stats(post_id_in UUID)
 RETURNS TABLE (
-  true_votes BIGINT,
+  thumbs_up_votes BIGINT,
   partial_votes BIGINT,
-  false_votes BIGINT,
+  thumbs_down_votes BIGINT,
+  funny_votes BIGINT,
   total_votes BIGINT
 ) AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    COUNT(*) FILTER (WHERE vote_type = 'true') AS true_votes,
+    COUNT(*) FILTER (WHERE vote_type = 'thumbs_up') AS thumbs_up_votes,
     COUNT(*) FILTER (WHERE vote_type = 'partial') AS partial_votes,
-    COUNT(*) FILTER (WHERE vote_type = 'false') AS false_votes,
+    COUNT(*) FILTER (WHERE vote_type = 'thumbs_down') AS thumbs_down_votes,
+    COUNT(*) FILTER (WHERE vote_type = 'funny') AS funny_votes,
     COUNT(*) AS total_votes
   FROM truth_votes
   WHERE post_id = post_id_in;

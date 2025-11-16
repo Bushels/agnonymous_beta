@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:html' as html;
-import 'dart:js' as js;
 import 'dart:math' as math;
 import 'package:agnonymous_beta/create_post_screen.dart';
 import 'package:flutter/foundation.dart';
@@ -11,9 +9,41 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:logger/logger.dart';
+import 'package:html_unescape/html_unescape.dart';
+
+// Conditional imports for web-only functionality
+import 'stub_web.dart' if (dart.library.html) 'web_helper.dart';
 
 // --- SUPABASE CLIENT ---
 final supabase = Supabase.instance.client;
+
+// --- LOGGER ---
+final logger = Logger(
+  printer: PrettyPrinter(
+    methodCount: 0,
+    errorMethodCount: 5,
+    lineLength: 80,
+    colors: true,
+    printEmojis: true,
+    printTime: false,
+  ),
+  level: kReleaseMode ? Level.warning : Level.debug,
+);
+
+// --- HTML SANITIZATION ---
+final htmlUnescape = HtmlUnescape();
+
+/// Sanitize user input to prevent XSS attacks
+String sanitizeInput(String input) {
+  // Remove any HTML tags
+  String sanitized = input.replaceAll(RegExp(r'<[^>]*>'), '');
+  // Decode HTML entities
+  sanitized = htmlUnescape.convert(sanitized);
+  // Trim whitespace
+  sanitized = sanitized.trim();
+  return sanitized;
+}
 
 // --- CONSTANTS ---
 const List<String> PROVINCES_STATES = [
@@ -254,12 +284,8 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
     state = state.copyWith(categoryStates: updatedCategoryStates);
 
     try {
-      // Debug: Check if we're authenticated
-      final user = supabase.auth.currentUser;
-      print('=== AUTH DEBUG ===');
-      print('Current user: ${user?.id}');
-      print('Is authenticated: ${user != null}');
-      
+      logger.d('Fetching posts for category: $category, page: $pageToLoad');
+
       var query = supabase
           .from('posts')
           .select('*');
@@ -269,39 +295,13 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
         query = query.eq('category', category);
       }
 
-      print('=== QUERY DEBUG ===');
-      print('Fetching posts for category: $category');
-      print('Page: $pageToLoad, Page size: $_pageSize');
-      
       final data = await query
           .order('created_at', ascending: false)
           .range(pageToLoad * _pageSize, (pageToLoad + 1) * _pageSize - 1);
-      
-      print('Raw data type: ${data.runtimeType}');
-      print('Raw data (first 3 posts): ${data.take(3).toList()}');
-      
-      // Check comment_count values in raw data
-      for (final item in data.take(3)) {
-        print('Raw DB - Post ${item['id']}: comment_count = ${item['comment_count']} (${item['comment_count'].runtimeType})');
-      }
-      
-      final newPosts = (data as List).map((map) => Post.fromMap(map)).toList();
-      
-      // Check comment_count values in Post objects
-      for (final post in newPosts.take(3)) {
-        print('Post object ${post.id}: commentCount = ${post.commentCount}');
-      }
 
-      // Debug logging
-      print('=== CATEGORY PAGINATION DEBUG ===');
-      print('Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
-      print('Current state: ${categoryState.posts.length} posts, hasMore: ${categoryState.hasMore}');
-      
-      // Debug comment counts specifically
-      print('=== COMMENT COUNT DEBUG ===');
-      for (final post in newPosts.take(5)) {
-        print('Post "${post.title}": commentCount=${post.commentCount}');
-      }
+      final newPosts = (data as List).map((map) => Post.fromMap(map)).toList();
+
+      logger.d('Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
 
       final List<Post> updatedPosts;
       if (isRefresh) {
@@ -330,13 +330,9 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
       finalCategoryStates[category] = newCategoryState;
       state = state.copyWith(categoryStates: finalCategoryStates);
 
-      print('Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
-      print('=== END CATEGORY PAGINATION DEBUG ===');
+      logger.d('Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
     } catch (e, stackTrace) {
-      print('=== ERROR LOADING POSTS ===');
-      print('Error loading posts for category $category: $e');
-      print('Stack trace: $stackTrace');
-      print('Error type: ${e.runtimeType}');
+      logger.e('Error loading posts for category $category', error: e, stackTrace: stackTrace);
       final errorCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
       errorCategoryStates[category] = categoryState.copyWith(isLoading: false, error: e.toString());
       state = state.copyWith(categoryStates: errorCategoryStates);
@@ -348,21 +344,17 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
   
   // Method to ensure category is loaded
   void ensureCategoryLoaded(String category) {
-    print('=== ENSURE CATEGORY LOADED ===');
-    print('Category: $category');
-    print('Current state keys: ${state.categoryStates.keys.toList()}');
-    print('Category exists in state: ${state.categoryStates.containsKey(category)}');
-    
+    logger.d('Ensuring category loaded: $category');
+
     if (!state.categoryStates.containsKey(category)) {
-      print('Loading initial posts for category: $category');
+      logger.d('Loading initial posts for category: $category');
       loadPostsForCategory(category, isInitial: true);
     } else {
       final categoryState = state.getCategoryState(category);
-      print('Category already loaded: posts=${categoryState.posts.length}, isLoading=${categoryState.isLoading}');
-      
+
       // If we have no posts and not loading, try to reload
       if (categoryState.posts.isEmpty && !categoryState.isLoading && categoryState.error == null) {
-        print('Category is empty and not loading, reloading...');
+        logger.d('Category is empty and not loading, reloading: $category');
         loadPostsForCategory(category, isInitial: true);
       }
     }
@@ -377,25 +369,24 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
           schema: 'public',
           table: 'posts',
           callback: (payload) {
-            print('New post inserted, refreshing categories');
+            logger.d('New post inserted, refreshing categories');
             // Refresh all loaded categories for new posts
             for (final category in state.categoryStates.keys) {
               refreshCategory(category);
             }
           },
         )
-        // NEW: Subscribe to updates on posts (e.g., comment_count or vote_count changes)
+        // Subscribe to updates on posts (e.g., comment_count or vote_count changes)
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'posts',
-          // No filter here to avoid UUID filtering issues in Supabase real-time
           callback: (payload) {
-            print('🔥 REAL-TIME POST UPDATE: Payload: $payload');
+            logger.d('Real-time post update received');
             final newMap = payload.newRecord;
             if (newMap != null) {
               final updatedPost = Post.fromMap(newMap as Map<String, dynamic>);
-              print('Updating post ${updatedPost.id} with new comment_count: ${updatedPost.commentCount}');
+              logger.d('Updating post ${updatedPost.id}');
 
               // Update the post in all loaded category states where it exists
               final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
@@ -407,7 +398,7 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
                   final updatedPosts = List<Post>.from(catState.posts);
                   updatedPosts[postIndex] = updatedPost;  // Replace with updated post
                   updatedCategoryStates[cat] = catState.copyWith(posts: updatedPosts);
-                  print('Updated post in category "$cat" at index $postIndex');
+                  logger.d('Updated post in category "$cat"');
                 }
               }
               state = state.copyWith(categoryStates: updatedCategoryStates);
@@ -510,12 +501,10 @@ final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
         dataMap = response;
       }
       final stats = GlobalStats.fromMap(dataMap);
-      print('=== DEBUG: Global Stats ===');
-      print('Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
-      print('=== End Global Stats ===');
+      logger.d('Global Stats - Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
       controller.add(stats);
     } catch (e) {
-      print('Error fetching global stats: $e');
+      logger.w('Error fetching global stats: $e');
       controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
     }
   }
@@ -559,8 +548,8 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
   
   try {
     final response = await supabase.rpc('get_trending_stats');
-    
-    print('Trending stats raw response: $response');
+
+    logger.d('Fetched trending stats');
     
     if (response == null) {
       return TrendingStats(
@@ -584,7 +573,7 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
     
     return TrendingStats.fromMap(data);
   } catch (e) {
-    print('Error fetching trending stats: $e');
+    logger.w('Error fetching trending stats: $e');
     return TrendingStats(
       trendingCategory: 'General',
       mostPopularPostTitle: 'No posts yet',
@@ -600,23 +589,19 @@ Future<void> main() async {
     // Try to get from JavaScript window.ENV first (Firebase hosting)
     String? supabaseUrl;
     String? supabaseAnonKey;
-    
-    try {
-      final env = js.context['ENV'] as js.JsObject?;
-      if (env != null) {
-        supabaseUrl = env['SUPABASE_URL'] as String?;
-        supabaseAnonKey = env['SUPABASE_ANON_KEY'] as String?;
-      }
-    } catch (e) {
-      // JS interop failed, try other methods
+
+    // Use conditional web helper for platform-safe environment variable access
+    if (kIsWeb) {
+      supabaseUrl = getWebEnvironmentVariable('SUPABASE_URL');
+      supabaseAnonKey = getWebEnvironmentVariable('SUPABASE_ANON_KEY');
     }
-    
+
     // If not found, try dart-define (production)
     if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
       supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
       supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
     }
-    
+
     // If still not found, try to load from .env (development)
     if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
       try {
@@ -628,48 +613,38 @@ Future<void> main() async {
       }
     }
 
-    if (supabaseUrl == null || supabaseUrl.isEmpty || 
+    if (supabaseUrl == null || supabaseUrl.isEmpty ||
         supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
       throw Exception('Supabase credentials not found. Please check environment variables or .env file.');
     }
 
-    print('=== SUPABASE INIT DEBUG ===');
-    print('Supabase URL: $supabaseUrl');
-    print('Supabase Key: ${supabaseAnonKey?.substring(0, 20)}...');
-    
+    logger.d('Initializing Supabase connection');
+
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
-    
-    print('Supabase initialized successfully');
-    
+
+    logger.i('Supabase initialized successfully');
+
     try {
       // Try to get existing session first
       final session = supabase.auth.currentSession;
       if (session == null) {
-        print('No existing session, signing in anonymously...');
+        logger.d('No existing session, signing in anonymously');
         final authResponse = await supabase.auth.signInAnonymously();
-        print('Anonymous auth successful: ${authResponse.user?.id}');
+        logger.i('Anonymous auth successful');
       } else {
-        print('Using existing session: ${session.user.id}');
+        logger.d('Using existing session');
       }
     } catch (authError) {
-      print('Anonymous auth error: $authError');
+      logger.w('Anonymous auth error: $authError');
       // Continue anyway, posts might be publicly accessible
     }
-    
-    // Test connection with a simple query
-    try {
-      print('Testing Supabase connection...');
-      final testResult = await supabase.from('posts').select('count').limit(1);
-      print('Connection test successful: $testResult');
-    } catch (connectionError) {
-      print('Connection test failed: $connectionError');
-    }
-    
+
     runApp(const ProviderScope(child: AgnonymousApp()));
   } catch (e) {
+    logger.e('Failed to initialize app', error: e);
     runApp(ErrorApp(message: e.toString()));
   }
 }
@@ -899,7 +874,7 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
     final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory : 'all';
     if (_lastCategory != currentCategory) {
       _lastCategory = currentCategory;
-      print('=== LOADING CATEGORY: $currentCategory ===');
+      logger.d('Loading category: $currentCategory');
       ref.read(paginatedPostsProvider.notifier).ensureCategoryLoaded(currentCategory);
     }
   }
@@ -911,11 +886,8 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
     // Determine which category to display
     final currentCategory = widget.selectedCategory.isNotEmpty ? widget.selectedCategory : 'all';
     final categoryState = postsState.getCategoryState(currentCategory);
-    
-    print('=== BUILD DEBUG ===');
-    print('Current category: $currentCategory');
-    print('Category state: isLoading=${categoryState.isLoading}, posts=${categoryState.posts.length}, hasMore=${categoryState.hasMore}');
-    print('Error: ${categoryState.error}');
+
+    logger.d('Building feed for category: $currentCategory, posts: ${categoryState.posts.length}');
 
     final horizontalPadding = MediaQuery.of(context).size.width > 800
         ? (MediaQuery.of(context).size.width - 800) / 2
@@ -1518,7 +1490,14 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   Widget _buildActionRow() {
     final isSmallScreen = MediaQuery.of(context).size.width < 450;
-    
+
+    // Generate comment button text showing count
+    final commentButtonText = widget.post.commentCount == 0
+        ? 'Leave a comment'
+        : _isCommentsExpanded
+            ? 'Hide ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}'
+            : 'View ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}';
+
     return isSmallScreen
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1531,7 +1510,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
+                label: Text(commentButtonText),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1549,7 +1528,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
+                label: Text(commentButtonText),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1866,11 +1845,17 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw 'Not authenticated';
 
+      // Sanitize comment content to prevent XSS attacks
+      final sanitizedContent = sanitizeInput(content);
+      if (sanitizedContent.isEmpty) {
+        throw 'Invalid comment content';
+      }
+
       // Insert comment
       await supabase.from('comments').insert({
         'post_id': widget.postId,
         'anonymous_user_id': userId,
-        'content': content,
+        'content': sanitizedContent,
       });
       
       _commentController.clear();
