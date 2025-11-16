@@ -1490,7 +1490,14 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   Widget _buildActionRow() {
     final isSmallScreen = MediaQuery.of(context).size.width < 450;
-    
+
+    // Generate comment button text showing count
+    final commentButtonText = widget.post.commentCount == 0
+        ? 'Leave a comment'
+        : _isCommentsExpanded
+            ? 'Hide ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}'
+            : 'View ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}';
+
     return isSmallScreen
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1503,7 +1510,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
+                label: Text(commentButtonText),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
@@ -1521,7 +1528,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
                   size: 16,
                 ),
-                label: Text(widget.post.commentCount == 0 ? 'Leave a comment' : 'More comments'),
+                label: Text(commentButtonText),
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
               ),
             ],
