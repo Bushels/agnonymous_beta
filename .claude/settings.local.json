@@ -16,7 +16,19 @@
       "Bash(ls:*)",
       "Bash(dir:*)",
       "Bash(git rm:*)",
-      "WebFetch(domain:agnonymousbeta.web.app)"
+      "WebFetch(domain:agnonymousbeta.web.app)",
+      "Bash(timeout 2 cat:*)",
+      "Bash(nul)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(timeout 15 bash:*)",
+      "Bash(timeout 20 bash:*)",
+      "Bash(timeout 25 bash:*)",
+      "Bash(timeout 10 bash:*)",
+      "Bash(flutter --version:*)",
+      "Bash(timeout 30 bash:*)",
+      "Bash(timeout 35 bash:*)",
+      "Skill(frontend-design:frontend-design)"
     ],
     "deny": []
   }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:agnonymous_beta/create_post_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +8,27 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase_auth show AuthState;
 import 'package:logger/logger.dart';
 import 'package:html_unescape/html_unescape.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/auth/reset_password_screen.dart';
+import 'screens/auth/verify_email_screen.dart';
+import 'screens/profile/profile_screen.dart';
+import 'screens/leaderboard/leaderboard_screen.dart';
+import 'screens/pricing/prices_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
+import 'providers/auth_provider.dart';
+import 'models/user_profile.dart' show TruthMeterStatus;
+import 'services/analytics_service.dart';
+import 'widgets/glass_bottom_nav.dart';
+// VoteButtons no longer used - voting is handled inline in LuxuryPostCard
+import 'widgets/luxury_post_card.dart';
+import 'widgets/truth_meter.dart' as truth_widget;
 
 // Conditional imports for web-only functionality
-import 'stub_web.dart' if (dart.library.html) 'web_helper.dart';
 
 // --- SUPABASE CLIENT ---
 final supabase = Supabase.instance.client;
@@ -45,8 +60,15 @@ String sanitizeInput(String input) {
   return sanitized;
 }
 
+String? getWebEnvironmentVariable(String key) {
+  // Implementation for web environment variables if needed
+  // For now, return null or handle as appropriate
+  return null;
+}
+
 // --- CONSTANTS ---
 const List<String> PROVINCES_STATES = [
+  // --- Canadian Provinces & Territories (alphabetical) ---
   'Alberta',
   'British Columbia',
   'Manitoba',
@@ -60,17 +82,69 @@ const List<String> PROVINCES_STATES = [
   'Quebec',
   'Saskatchewan',
   'Yukon',
-  // US States (common ones)
+  // --- USA States (alphabetical) ---
+  'Alabama',
+  'Alaska',
+  'Arizona',
+  'Arkansas',
   'California',
-  'Texas',
+  'Colorado',
+  'Connecticut',
+  'Delaware',
   'Florida',
-  'New York',
+  'Georgia',
+  'Hawaii',
+  'Idaho',
   'Illinois',
+  'Indiana',
+  'Iowa',
+  'Kansas',
+  'Kentucky',
+  'Louisiana',
+  'Maine',
+  'Maryland',
+  'Massachusetts',
+  'Michigan',
+  'Minnesota',
+  'Mississippi',
+  'Missouri',
+  'Montana',
+  'Nebraska',
+  'Nevada',
+  'New Hampshire',
+  'New Jersey',
+  'New Mexico',
+  'New York',
+  'North Carolina',
+  'North Dakota',
+  'Ohio',
+  'Oklahoma',
+  'Oregon',
   'Pennsylvania',
+  'Rhode Island',
+  'South Carolina',
+  'South Dakota',
+  'Tennessee',
+  'Texas',
+  'Utah',
+  'Vermont',
+  'Virginia',
+  'Washington',
+  'West Virginia',
+  'Wisconsin',
+  'Wyoming',
+  // --- USA Territories ---
+  'District of Columbia',
+  'Puerto Rico',
+  'Guam',
+  'U.S. Virgin Islands',
+  // --- Other ---
   'Other/International',
 ];
 
 // --- DATA MODELS ---
+// TruthMeterStatus is imported from models/user_profile.dart
+
 class Post {
   final String id;
   final String title;
@@ -81,6 +155,23 @@ class Post {
   final int commentCount;
   final int voteCount;
 
+  // Gamification & Truth Meter
+  final double truthMeterScore;
+  final TruthMeterStatus truthMeterStatus;
+  final bool adminVerified;
+  final DateTime? verifiedAt;
+  final String? verifiedBy;
+  final int thumbsUpCount;
+  final int thumbsDownCount;
+  final int partialCount;
+  final int funnyCount;
+
+  // User/Author info
+  final String? userId;
+  final bool isAnonymous;
+  final String? authorUsername;
+  final bool authorVerified;
+
   Post({
     required this.id,
     required this.title,
@@ -90,6 +181,19 @@ class Post {
     required this.createdAt,
     required this.commentCount,
     required this.voteCount,
+    this.truthMeterScore = 0.0,
+    this.truthMeterStatus = TruthMeterStatus.unrated,
+    this.adminVerified = false,
+    this.verifiedAt,
+    this.verifiedBy,
+    this.thumbsUpCount = 0,
+    this.thumbsDownCount = 0,
+    this.partialCount = 0,
+    this.funnyCount = 0,
+    this.userId,
+    this.isAnonymous = true,
+    this.authorUsername,
+    this.authorVerified = false,
   });
 
   factory Post.fromMap(Map<String, dynamic> map) {
@@ -102,7 +206,35 @@ class Post {
       createdAt: DateTime.parse(map['created_at']),
       commentCount: map['comment_count'] ?? 0,
       voteCount: map['vote_count'] ?? 0,
+      truthMeterScore: (map['truth_meter_score'] as num?)?.toDouble() ?? 0.0,
+      truthMeterStatus: map['truth_meter_status'] != null
+          ? TruthMeterStatus.fromString(map['truth_meter_status'])
+          : TruthMeterStatus.unrated,
+      adminVerified: map['admin_verified'] ?? false,
+      verifiedAt: map['verified_at'] != null ? DateTime.parse(map['verified_at']) : null,
+      verifiedBy: map['verified_by'],
+      thumbsUpCount: map['thumbs_up_count'] ?? 0,
+      thumbsDownCount: map['thumbs_down_count'] ?? 0,
+      partialCount: map['partial_count'] ?? 0,
+      funnyCount: map['funny_count'] ?? 0,
+      userId: map['user_id'],
+      isAnonymous: map['is_anonymous'] ?? true,
+      authorUsername: map['author_username'],
+      authorVerified: map['author_verified'] ?? false,
     );
+  }
+
+  /// Get author display name
+  String get authorDisplay {
+    if (isAnonymous) return 'Anonymous';
+    return authorUsername ?? 'Unknown User';
+  }
+
+  /// Get author badge emoji
+  String? get authorBadge {
+    if (isAnonymous) return '🎭';
+    if (authorVerified) return '✅';
+    return '⚠️';
   }
 }
 
@@ -111,18 +243,47 @@ class Comment {
   final String content;
   final DateTime createdAt;
 
-  Comment({required this.id, required this.content, required this.createdAt});
+  // User/Author info
+  final String? userId;
+  final bool isAnonymous;
+  final String? authorUsername;
+  final bool authorVerified;
+
+  Comment({
+    required this.id,
+    required this.content,
+    required this.createdAt,
+    this.userId,
+    this.isAnonymous = true,
+    this.authorUsername,
+    this.authorVerified = false,
+  });
 
   factory Comment.fromMap(Map<String, dynamic> map) {
     return Comment(
       id: map['id'],
       content: map['content'],
       createdAt: DateTime.parse(map['created_at']),
+      userId: map['user_id'],
+      isAnonymous: map['is_anonymous'] ?? true,
+      authorUsername: map['author_username'],
+      authorVerified: map['author_verified'] ?? false,
     );
   }
-}
 
-class VoteStats {
+  /// Get author display name
+  String get authorDisplay {
+    if (isAnonymous) return 'Anonymous';
+    return authorUsername ?? 'Unknown User';
+  }
+
+  /// Get author badge emoji
+  String? get authorBadge {
+    if (isAnonymous) return '🎭';
+    if (authorVerified) return '✅';
+    return '⚠️';
+  }
+}class VoteStats {
   final int thumbsUpVotes;
   final int partialVotes;
   final int thumbsDownVotes;
@@ -195,6 +356,7 @@ String getIconForCategory(String category) {
     case 'chemicals': return '🧪';
     case 'equipment': return '🔧';
     case 'politics': return '🏛️';
+    case 'input prices': return '💰';
     case 'general': return '📝';
     case 'other': return '🔗';
     default: return '📝';
@@ -260,16 +422,26 @@ class PaginatedPostsState {
 }
 
 // Notifier for Category-specific Pagination Logic
-class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
-  PaginatedPostsNotifier(this.ref) : super(const PaginatedPostsState()) {
-    _initRealTime();
-    // Load initial posts for "all" category
-    loadPostsForCategory('all', isInitial: true);
-  }
-
-  final Ref ref;
+class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
   final int _pageSize = 50;  // 50 posts per category for better coverage
   RealtimeChannel? _postsChannel;
+
+  @override
+  PaginatedPostsState build() {
+    _initRealTime();
+
+    // Defer loading to next microtask so state is initialized first
+    // This prevents the circular dependency error where loadPostsForCategory
+    // tries to access state before build() returns the initial state
+    Future.microtask(() => loadPostsForCategory('all', isInitial: true));
+
+    // Clean up realtime subscription when disposed
+    ref.onDispose(() {
+      _postsChannel?.unsubscribe();
+    });
+
+    return const PaginatedPostsState();
+  }
 
   Future<void> loadPostsForCategory(String category, {bool isInitial = false, bool isRefresh = false}) async {
     final categoryState = state.getCategoryState(category);
@@ -384,42 +556,35 @@ class PaginatedPostsNotifier extends StateNotifier<PaginatedPostsState> {
           callback: (payload) {
             logger.d('Real-time post update received');
             final newMap = payload.newRecord;
-            if (newMap != null) {
-              final updatedPost = Post.fromMap(newMap as Map<String, dynamic>);
-              logger.d('Updating post ${updatedPost.id}');
+            final updatedPost = Post.fromMap(newMap);
+            logger.d('Updating post ${updatedPost.id}');
 
-              // Update the post in all loaded category states where it exists
-              final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
-              for (final entry in updatedCategoryStates.entries) {
-                final cat = entry.key;
-                final catState = entry.value;
-                final postIndex = catState.posts.indexWhere((p) => p.id == updatedPost.id);
-                if (postIndex != -1) {
-                  final updatedPosts = List<Post>.from(catState.posts);
-                  updatedPosts[postIndex] = updatedPost;  // Replace with updated post
-                  updatedCategoryStates[cat] = catState.copyWith(posts: updatedPosts);
-                  logger.d('Updated post in category "$cat"');
-                }
+            // Update the post in all loaded category states where it exists
+            final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+            for (final entry in updatedCategoryStates.entries) {
+              final cat = entry.key;
+              final catState = entry.value;
+              final postIndex = catState.posts.indexWhere((p) => p.id == updatedPost.id);
+              if (postIndex != -1) {
+                final updatedPosts = List<Post>.from(catState.posts);
+                updatedPosts[postIndex] = updatedPost;  // Replace with updated post
+                updatedCategoryStates[cat] = catState.copyWith(posts: updatedPosts);
+                logger.d('Updated post in category "$cat"');
               }
-              state = state.copyWith(categoryStates: updatedCategoryStates);
             }
-          },
+            state = state.copyWith(categoryStates: updatedCategoryStates);
+                    },
         )
         .subscribe();
   }
 
-  @override
-  void dispose() {
-    _postsChannel?.unsubscribe();
-    super.dispose();
-  }
 }
 
 // --- RIVERPOD PROVIDERS ---
 // Provider Declaration
-final paginatedPostsProvider = StateNotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>((ref) {
-  return PaginatedPostsNotifier(ref);
-});
+final paginatedPostsProvider = NotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>(
+  PaginatedPostsNotifier.new,
+);
 
 // Keep legacy provider for compatibility with other components that might still use it
 final postsProvider = StreamProvider<List<Post>>((ref) {
@@ -584,7 +749,25 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
 // --- MAIN APP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    logger.i('Firebase initialized successfully');
+  } catch (e) {
+    logger.w('Firebase initialization failed (may already be initialized in web): $e');
+  }
+
+  // Initialize Mobile Ads
+  if (!kIsWeb) {
+    try {
+      await MobileAds.instance.initialize();
+      logger.i('Mobile Ads initialized successfully');
+    } catch (e) {
+      logger.w('Mobile Ads initialization failed: $e');
+    }
+  }
+
   try {
     // Try to get from JavaScript window.ENV first (Firebase hosting)
     String? supabaseUrl;
@@ -717,7 +900,139 @@ class AgnonymousApp extends StatelessWidget {
       title: 'Agnonymous',
       theme: theme,
       debugShowCheckedModeBanner: false,
-      home: const HomeScreen(),
+      home: const AuthWrapper(),
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/profile': (context) => const ProfileScreen(),
+        '/leaderboard': (context) => const LeaderboardScreen(),
+        '/reset-password': (context) => const ResetPasswordScreen(),
+        '/verify-email': (context) => const VerifyEmailScreen(),
+      },
+      navigatorObservers: [
+        AnalyticsService.instance.observer,
+      ],
+    );
+  }
+}
+
+/// Wrapper widget that handles auth state changes for deep links
+/// Detects password recovery and email verification events
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  StreamSubscription<supabase_auth.AuthState>? _authSubscription;
+  bool _hasHandledDeepLink = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAuthListener();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _setupAuthListener() {
+    _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      final event = data.event;
+      logger.d('Auth state change: $event');
+
+      // Only handle each deep link once
+      if (_hasHandledDeepLink) return;
+
+      if (event == AuthChangeEvent.passwordRecovery) {
+        _hasHandledDeepLink = true;
+        logger.i('Password recovery event detected, navigating to reset screen');
+
+        // Navigate to reset password screen
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+              (route) => false,
+            );
+          }
+        });
+      } else if (event == AuthChangeEvent.userUpdated) {
+        // Check if email was just verified
+        final user = data.session?.user;
+        if (user != null && user.emailConfirmedAt != null) {
+          logger.i('Email verification confirmed');
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const MainNavigationShell();
+  }
+}
+
+// --- MAIN NAVIGATION SHELL ---
+class MainNavigationShell extends ConsumerStatefulWidget {
+  const MainNavigationShell({super.key});
+
+  @override
+  ConsumerState<MainNavigationShell> createState() => _MainNavigationShellState();
+}
+
+class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
+  int _currentIndex = 0;
+
+  // Navigation items (Profile accessed via top header)
+  static const _navItems = [
+    BottomNavItem(icon: FontAwesomeIcons.house, label: 'Home'),
+    BottomNavItem(icon: FontAwesomeIcons.dollarSign, label: 'Prices'),
+    BottomNavItem(icon: FontAwesomeIcons.plus, label: 'Post', isSpecial: true),
+    BottomNavItem(icon: FontAwesomeIcons.trophy, label: 'Rank'),
+    BottomNavItem(icon: FontAwesomeIcons.bell, label: 'Alerts'),
+  ];
+
+  void _onNavTap(int index) {
+    // Special button opens create post screen as modal
+    if (index == 2) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const CreatePostScreen()),
+      );
+      return;
+    }
+
+    setState(() {
+      _currentIndex = index > 2 ? index - 1 : index; // Adjust for special button
+    });
+  }
+
+  int _getNavIndex() {
+    // Convert internal index to nav index (accounting for special button)
+    return _currentIndex >= 2 ? _currentIndex + 1 : _currentIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: const [
+          HomeScreen(),         // 0: Home (nav index 0)
+          PricesScreen(),       // 1: Prices (nav index 1)
+          LeaderboardScreen(),  // 2: Rank (nav index 3)
+          NotificationsScreen(), // 3: Alerts (nav index 4)
+        ],
+      ),
+      bottomNavigationBar: GlassBottomNav(
+        currentIndex: _getNavIndex(),
+        onTap: _onNavTap,
+        items: _navItems,
+      ),
     );
   }
 }
@@ -810,17 +1125,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               searchQuery: searchQuery,
               selectedCategory: selectedCategory,
             ),
+            // Add bottom padding for the navigation bar
+            const SliverToBoxAdapter(
+              child: SizedBox(height: 100),
+            ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const CreatePostScreen()),
-          );
-        },
-        backgroundColor: theme.colorScheme.primary,
-        child: const FaIcon(FontAwesomeIcons.plus, color: Colors.white),
       ),
     );
   }
@@ -1020,11 +1330,24 @@ class HeaderBar extends StatefulWidget {
 class _HeaderBarState extends State<HeaderBar> {
   bool isSearchExpanded = false;
   final searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    widget.onSearchChanged(query);
+    // Debounce analytics logging to avoid excessive events
+    _searchDebounce?.cancel();
+    if (query.length >= 3) {
+      _searchDebounce = Timer(const Duration(milliseconds: 800), () {
+        AnalyticsService.instance.logSearch(searchTerm: query);
+      });
+    }
   }
 
   @override
@@ -1038,13 +1361,22 @@ class _HeaderBarState extends State<HeaderBar> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           if (!isSearchExpanded) ...[
-            Text(
-              'Agnonymous',
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-                color: Colors.white,
-              ),
+            Row(
+              children: [
+                Image.asset(
+                  'assets/images/app_icon_foreground.png',
+                  height: 32,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Agnonymous',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
             const Spacer(),
             if (isMediumScreen) 
@@ -1061,7 +1393,7 @@ class _HeaderBarState extends State<HeaderBar> {
               _buildSearchField(),
               const SizedBox(width: 12),
             ],
-            const GlobalStatsHeader(),
+            const _AuthHeaderButton(),
           ] else ...[
             // Expanded search mode for mobile
             Expanded(
@@ -1089,7 +1421,7 @@ class _HeaderBarState extends State<HeaderBar> {
                     borderSide: BorderSide.none,
                   ),
                 ),
-                onChanged: widget.onSearchChanged,
+                onChanged: _onSearchChanged,
               ),
             ),
           ],
@@ -1116,7 +1448,60 @@ class _HeaderBarState extends State<HeaderBar> {
               borderSide: BorderSide.none,
             ),
           ),
-          onChanged: widget.onSearchChanged,
+          onChanged: _onSearchChanged,
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthHeaderButton extends ConsumerWidget {
+  const _AuthHeaderButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAuthenticated = ref.watch(isAuthenticatedProvider);
+    final userProfile = ref.watch(currentUserProfileProvider);
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    if (isAuthenticated) {
+      return InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        ),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+          ),
+          child: CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.blueGrey.shade800,
+            child: Text(
+              userProfile?.username.substring(0, 1).toUpperCase() ?? 'U',
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ElevatedButton.icon(
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      ),
+      icon: const FaIcon(FontAwesomeIcons.rightToBracket, size: 14),
+      label: isSmallScreen ? const Text('Sign In') : const Text('Sign In / Join'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white.withOpacity(0.1),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.2)),
         ),
       ),
     );
@@ -1198,11 +1583,11 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-// --- CATEGORY CHIPS ---
+// --- CATEGORY DROPDOWN ---
 class CategoryChips extends StatelessWidget {
   final String selectedCategory;
   final Function(String) onCategoryChanged;
-  
+
   const CategoryChips({
     super.key,
     required this.selectedCategory,
@@ -1211,7 +1596,7 @@ class CategoryChips extends StatelessWidget {
 
   static const List<String> categories = [
     'Farming',
-    'Livestock', 
+    'Livestock',
     'Ranching',
     'Crops',
     'Markets',
@@ -1219,6 +1604,7 @@ class CategoryChips extends StatelessWidget {
     'Chemicals',
     'Equipment',
     'Politics',
+    'Input Prices',
     'General',
     'Other'
   ];
@@ -1226,65 +1612,100 @@ class CategoryChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    
+
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isSmallScreen ? 8 : 16,
+        horizontal: isSmallScreen ? 12 : 16,
         vertical: 12,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Text(
-                'Filter by Category:',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selectedCategory.isNotEmpty
+                      ? theme.colorScheme.primary.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.1),
                 ),
               ),
-              const SizedBox(width: 12),
-              if (selectedCategory.isNotEmpty)
-                TextButton(
-                  onPressed: () => onCategoryChanged(''),
-                  child: const Text(
-                    'Show All',
-                    style: TextStyle(color: Colors.blue),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedCategory.isEmpty ? null : selectedCategory,
+                  hint: Row(
+                    children: [
+                      FaIcon(
+                        FontAwesomeIcons.filter,
+                        size: 14,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'All Categories',
+                        style: GoogleFonts.inter(
+                          color: Colors.grey.shade400,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
+                  isExpanded: true,
+                  dropdownColor: const Color(0xFF1F2937),
+                  icon: FaIcon(
+                    FontAwesomeIcons.chevronDown,
+                    size: 12,
+                    color: Colors.grey.shade400,
+                  ),
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),
+                  items: categories.map((category) {
+                    return DropdownMenuItem<String>(
+                      value: category,
+                      child: Row(
+                        children: [
+                          Text(
+                            getIconForCategory(category),
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(category),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      AnalyticsService.instance.logCategoryFilter(category: value);
+                    }
+                    onCategoryChanged(value ?? '');
+                  },
                 ),
-            ],
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: categories.map((category) {
-              final isSelected = selectedCategory == category;
-              return FilterChip(
-                label: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(getIconForCategory(category)),
-                    const SizedBox(width: 6),
-                    Text(category),
-                  ],
+          if (selectedCategory.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () => onCategoryChanged(''),
+              icon: FaIcon(
+                FontAwesomeIcons.xmark,
+                size: 16,
+                color: Colors.grey.shade400,
+              ),
+              tooltip: 'Clear filter',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black.withOpacity(0.3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                selected: isSelected,
-                onSelected: (selected) {
-                  onCategoryChanged(selected ? category : '');
-                },
-                selectedColor: theme.colorScheme.primary.withOpacity(0.2),
-                checkmarkColor: theme.colorScheme.primary,
-                backgroundColor: Colors.grey.withOpacity(0.1),
-                side: BorderSide(
-                  color: isSelected 
-                      ? theme.colorScheme.primary 
-                      : Colors.grey.withOpacity(0.3),
-                ),
-              );
-            }).toList(),
-          ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1395,293 +1816,8 @@ class PostCard extends ConsumerStatefulWidget {
 class _PostCardState extends ConsumerState<PostCard> {
   bool _isCommentsExpanded = false;
 
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.blueGrey.withOpacity(0.2),
-                  child: Text(
-                    getIconForCategory(widget.post.category),
-                    style: const TextStyle(fontSize: 24),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            widget.post.category,
-                            style: TextStyle(
-                              color: Colors.blueGrey.shade200,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (widget.post.provinceState != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: theme.colorScheme.primary.withOpacity(0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                widget.post.provinceState!,
-                                style: TextStyle(
-                                  color: theme.colorScheme.primary,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        DateFormat.yMMMd().add_jm().format(widget.post.createdAt),
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.post.title,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.post.content,
-              style: TextStyle(color: Colors.grey.shade300),
-            ),
-            const SizedBox(height: 16),
-            TruthMeter(postId: widget.post.id),
-            const SizedBox(height: 16),
-            _buildActionRow(),
-            if (_isCommentsExpanded)
-              CommentSection(postId: widget.post.id),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionRow() {
-    final isSmallScreen = MediaQuery.of(context).size.width < 450;
-
-    // Generate comment button text showing count
-    final commentButtonText = widget.post.commentCount == 0
-        ? 'Leave a comment'
-        : _isCommentsExpanded
-            ? 'Hide ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}'
-            : 'View ${widget.post.commentCount} ${widget.post.commentCount == 1 ? 'comment' : 'comments'}';
-
-    return isSmallScreen
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              VoteButtons(postId: widget.post.id),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
-                icon: FaIcon(
-                  _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
-                  size: 16,
-                ),
-                label: Text(commentButtonText),
-                style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
-              ),
-            ],
-          )
-        : Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                flex: 3,
-                child: VoteButtons(postId: widget.post.id),
-              ),
-              TextButton.icon(
-                onPressed: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
-                icon: FaIcon(
-                  _isCommentsExpanded ? FontAwesomeIcons.chevronUp : FontAwesomeIcons.message,
-                  size: 16,
-                ),
-                label: Text(commentButtonText),
-                style: TextButton.styleFrom(foregroundColor: Colors.grey.shade400),
-              ),
-            ],
-          );
-  }
-}
-
-// --- TRUTH METER ---
-class TruthMeter extends ConsumerWidget {
-  final String postId;
-  const TruthMeter({super.key, required this.postId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final voteStatsAsync = ref.watch(voteStatsProvider(postId));
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = screenWidth > 600 ? 600.0 : screenWidth - 32;
-
-    return voteStatsAsync.when(
-      loading: () => const SizedBox(
-        height: 28,
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      ),
-      error: (err, stack) => Text(
-        'Could not load votes',
-        style: TextStyle(color: Colors.red.shade400),
-      ),
-      data: (stats) {
-        if (stats.totalVotes == 0) {
-          return const Center(
-            child: Text(
-              'No votes yet. Be the first to cast one!',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-            ),
-          );
-        }
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Community Truth Meter',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Row(
-                  children: [
-                    if (stats.thumbsUpVotes > 0)
-                      _MeterSegment(
-                        value: stats.thumbsUpVotes / stats.totalVotes,
-                        color: theme.colorScheme.primary,
-                      ),
-                    if (stats.partialVotes > 0)
-                      _MeterSegment(
-                        value: stats.partialVotes / stats.totalVotes,
-                        color: theme.colorScheme.secondary,
-                      ),
-                    if (stats.thumbsDownVotes > 0)
-                      _MeterSegment(
-                        value: stats.thumbsDownVotes / stats.totalVotes,
-                        color: theme.colorScheme.error,
-                      ),
-                    if (stats.funnyVotes > 0)
-                      _MeterSegment(
-                        value: stats.funnyVotes / stats.totalVotes,
-                        color: Colors.purple,
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 16,
-                runSpacing: 4,
-                children: [
-                  _buildLabel('Thumbs Up', stats.thumbsUpVotes, stats.totalVotes, theme.colorScheme.primary),
-                  _buildLabel('Partial', stats.partialVotes, stats.totalVotes, theme.colorScheme.secondary),
-                  _buildLabel('Thumbs Down', stats.thumbsDownVotes, stats.totalVotes, theme.colorScheme.error),
-                  _buildLabel('Funny', stats.funnyVotes, stats.totalVotes, Colors.purple),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLabel(String label, int votes, int total, Color color) {
-    final percentage = (votes / total * 100).toStringAsFixed(0);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          '$label ($percentage%)',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-        ),
-      ],
-    );
-  }
-}
-
-class _MeterSegment extends StatelessWidget {
-  final double value;
-  final Color color;
-  const _MeterSegment({required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      flex: (value * 100).toInt(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        height: 10,
-        color: color,
-      ),
-    );
-  }
-}
-
-// --- VOTE BUTTONS ---
-class VoteButtons extends ConsumerStatefulWidget {
-  final String postId;
-  const VoteButtons({super.key, required this.postId});
-
-  @override
-  ConsumerState<VoteButtons> createState() => _VoteButtonsState();
-}
-
-class _VoteButtonsState extends ConsumerState<VoteButtons> {
-  bool _isVoting = false;
-  String? _pendingVote;
-
-  Future<void> _castVote(String voteType) async {
-    if (_isVoting) return;
-    
-    setState(() {
-      _isVoting = true;
-      _pendingVote = voteType;
-    });
+  Future<void> _castVote(BuildContext context, WidgetRef ref, String voteType) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
       final userId = supabase.auth.currentUser?.id;
@@ -1689,132 +1825,160 @@ class _VoteButtonsState extends ConsumerState<VoteButtons> {
         throw 'User not authenticated';
       }
 
-      await supabase.rpc('cast_user_vote', params: {
-        'post_id_in': widget.postId,
-        'user_id_in': userId,
-        'vote_type_in': voteType,
-      });
+      // Prevent self-voting
+      if (widget.post.userId == userId) {
+        throw 'You cannot vote on your own posts.';
+      }
 
-      // Refresh categories to pick up the vote count change from database trigger
+      // Try RPC first, fall back to direct upsert if it fails
+      try {
+        await supabase.rpc('cast_user_vote', params: {
+          'post_id_in': widget.post.id,
+          'user_id_in': userId,
+          'vote_type_in': voteType,
+        });
+      } catch (rpcError) {
+        // RPC failed (likely doesn't exist), use direct upsert
+        logger.w('RPC cast_user_vote failed, using direct upsert: $rpcError');
+
+        // Table uses anonymous_user_id as the main identifier
+        await supabase.from('truth_votes').upsert(
+          {
+            'post_id': widget.post.id,
+            'anonymous_user_id': userId,
+            'user_id': userId,
+            'vote_type': voteType,
+            'is_anonymous': true,
+          },
+          onConflict: 'anonymous_user_id,post_id',
+        );
+      }
+
+      // Refresh categories to pick up the vote count change
       final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
 
-      if (mounted) {
-        final voteEmoji = {
-          'thumbs_up': '👍',
-          'partial': '🤔',
-          'thumbs_down': '👎',
-          'funny': '😂',
-        }[voteType] ?? '';
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$voteEmoji Vote cast successfully!'),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      final voteEmoji = {
+        'thumbs_up': '👍',
+        'partial': '🤔',
+        'thumbs_down': '👎',
+        'funny': '😂',
+      }[voteType] ?? '';
+
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('$voteEmoji Vote cast successfully!'),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        String errorMessage = 'Error casting vote';
-        if (e.toString().contains('rate limit')) {
-          errorMessage = 'Too many votes! Please wait a minute.';
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
+      String errorMessage = 'Error casting vote';
+      final errorStr = e.toString();
+
+      if (errorStr.contains('rate limit')) {
+        errorMessage = 'Too many votes! Please wait a minute.';
+      } else if (errorStr.contains('own posts')) {
+        errorMessage = 'You cannot vote on your own posts.';
+      } else if (errorStr.contains('Access Denied')) {
+        errorMessage = 'Access Denied: ${errorStr.split('Access Denied:').last.trim()}';
+      } else if (errorStr.contains('unique_user_post_vote') || errorStr.contains('duplicate key')) {
+        // Vote already exists - this shouldn't happen with upsert but handle it
+        errorMessage = 'Vote updated!';
+      } else {
+         // Clean up Postgres error messages
+         errorMessage = errorStr.replaceAll('PostgrestException(message:', '').replaceAll('details:', '').trim();
+         if (errorMessage.length > 100) errorMessage = 'Error casting vote. Please try again.';
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isVoting = false;
-          _pendingVote = null;
-        });
-      }
+
+      final isError = !errorMessage.contains('updated');
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 450;
+    final voteStatsAsync = ref.watch(voteStatsProvider(widget.post.id));
+    final isAuthenticated = ref.watch(isAuthenticatedProvider);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildVoteButton(
-          voteType: 'thumbs_up',
-          icon: FontAwesomeIcons.thumbsUp,
-          label: 'Thumbs Up',
-          color: theme.colorScheme.primary,
-          isCompact: isCompact,
+    return LuxuryPostCard(
+      title: widget.post.title,
+      content: widget.post.content,
+      category: widget.post.category,
+      categoryEmoji: getIconForCategory(widget.post.category),
+      createdAt: widget.post.createdAt,
+      authorUsername: widget.post.authorUsername,
+      authorVerified: widget.post.authorVerified,
+      isAnonymous: widget.post.isAnonymous,
+      commentCount: widget.post.commentCount,
+      funnyCount: voteStatsAsync.value?.funnyVotes ?? 0,
+      isCommentsExpanded: _isCommentsExpanded,
+      onToggleComments: isAuthenticated ? () => setState(() => _isCommentsExpanded = !_isCommentsExpanded) : null,
+      onFunnyVote: isAuthenticated ? () => _castVote(context, ref, 'funny') : null,
+      truthMeterWidget: voteStatsAsync.when(
+        loading: () => const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.0),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
-        const SizedBox(width: 4),
-        _buildVoteButton(
-          voteType: 'partial',
-          icon: FontAwesomeIcons.circleQuestion,
-          label: 'Partial',
-          color: theme.colorScheme.secondary,
-          isCompact: isCompact,
+        error: (err, stack) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text('Error loading votes: $err', style: const TextStyle(color: Colors.red)),
+          ),
         ),
-        const SizedBox(width: 4),
-        _buildVoteButton(
-          voteType: 'thumbs_down',
-          icon: FontAwesomeIcons.thumbsDown,
-          label: 'Thumbs Down',
-          color: theme.colorScheme.error,
-          isCompact: isCompact,
-        ),
-        const SizedBox(width: 4),
-        _buildVoteButton(
-          voteType: 'funny',
-          icon: FontAwesomeIcons.faceGrinSquintTears,
-          label: 'Funny',
-          color: Colors.purple,
-          isCompact: isCompact,
-        ),
-      ],
-    );
-  }
+        data: (stats) {
+          // Calculate truth score
+          final positiveVotes = stats.thumbsUpVotes * 2 + stats.partialVotes;
+          final negativeVotes = stats.thumbsDownVotes * 2;
+          final totalWeighted = positiveVotes + negativeVotes;
+          final truthScore = totalWeighted > 0
+              ? (positiveVotes / totalWeighted * 100).clamp(0.0, 100.0)
+              : 50.0;
 
-  Widget _buildVoteButton({
-    required String voteType,
-    required IconData icon,
-    required String label,
-    required Color color,
-    required bool isCompact,
-  }) {
-    final isLoading = _isVoting && _pendingVote == voteType;
-    
-    return ElevatedButton(
-      onPressed: _isVoting ? null : () => _castVote(voteType),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.8),
-        foregroundColor: Colors.white,
-        minimumSize: isCompact ? const Size(50, 32) : null,
-        padding: isCompact 
-            ? const EdgeInsets.symmetric(horizontal: 6)
-            : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          // Determine status based on score
+          TruthMeterStatus status;
+          if (stats.totalVotes == 0) {
+            status = TruthMeterStatus.unrated;
+          } else if (truthScore >= 70) {
+            status = TruthMeterStatus.verifiedCommunity;
+          } else if (truthScore >= 40) {
+            status = TruthMeterStatus.questionable;
+          } else {
+            status = TruthMeterStatus.rumour;
+          }
+
+          return truth_widget.TruthMeter(
+            status: status,
+            score: truthScore,
+            voteCount: stats.totalVotes,
+            thumbsUp: stats.thumbsUpVotes,
+            thumbsDown: stats.thumbsDownVotes,
+            partial: stats.partialVotes,
+            funny: stats.funnyVotes,
+            compact: false,
+            showVoteBreakdown: isAuthenticated,
+            onVote: isAuthenticated ? (voteType) => _castVote(context, ref, voteType) : null,
+          );
+        },
       ),
-      child: isLoading
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
-          : FaIcon(icon, size: 14), // Always show just the icon, no text labels
+      commentsWidget: isAuthenticated ? CommentSection(postId: widget.post.id) : null,
+      showSignInPrompt: !isAuthenticated,
     );
   }
 }
+
+
 
 // --- COMMENT SECTION ---
 class CommentSection extends ConsumerStatefulWidget {
@@ -1828,6 +1992,7 @@ class CommentSection extends ConsumerStatefulWidget {
 class _CommentSectionState extends ConsumerState<CommentSection> {
   final _commentController = TextEditingController();
   bool _isPostingComment = false;
+  bool _commentAsAnonymous = true;
 
   @override
   void dispose() {
@@ -1851,13 +2016,29 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         throw 'Invalid comment content';
       }
 
-      // Insert comment
-      await supabase.from('comments').insert({
+      // Get user profile for author info if not anonymous
+      final authState = ref.read(authProvider);
+      final userProfile = authState.profile;
+
+      final commentData = <String, dynamic>{
         'post_id': widget.postId,
         'anonymous_user_id': userId,
         'content': sanitizedContent,
-      });
-      
+        'is_anonymous': _commentAsAnonymous,
+      };
+
+      // Add author info if not posting anonymously
+      if (!_commentAsAnonymous && userProfile != null) {
+        commentData['author_username'] = userProfile.username;
+        commentData['author_verified'] = userProfile.emailVerified;
+      }
+
+      // Insert comment
+      await supabase.from('comments').insert(commentData);
+
+      // Track comment analytics
+      AnalyticsService.instance.logCommentPosted();
+
       _commentController.clear();
       
       // Force refresh categories to pick up the updated comment count
@@ -1889,6 +2070,114 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         setState(() => _isPostingComment = false);
       }
     }
+  }
+
+  Widget _buildCommentIdentityToggle() {
+    final authState = ref.watch(authProvider);
+    final userProfile = authState.profile;
+    final isLoggedIn = userProfile != null;
+    final username = userProfile?.username ?? 'Unknown';
+    final isVerified = userProfile?.emailVerified ?? false;
+
+    return Row(
+      children: [
+        Text(
+          'Comment as: ',
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 12,
+          ),
+        ),
+        // Anonymous chip
+        GestureDetector(
+          onTap: () => setState(() => _commentAsAnonymous = true),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _commentAsAnonymous
+                  ? theme.colorScheme.primary.withOpacity(0.2)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _commentAsAnonymous
+                    ? theme.colorScheme.primary
+                    : Colors.grey.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.masks,
+                  size: 14,
+                  color: _commentAsAnonymous
+                      ? theme.colorScheme.primary
+                      : Colors.grey.shade500,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Anonymous',
+                  style: TextStyle(
+                    color: _commentAsAnonymous
+                        ? theme.colorScheme.primary
+                        : Colors.grey.shade500,
+                    fontSize: 12,
+                    fontWeight: _commentAsAnonymous
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Username chip (only if logged in with profile)
+        if (isLoggedIn)
+          GestureDetector(
+            onTap: () => setState(() => _commentAsAnonymous = false),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: !_commentAsAnonymous
+                    ? theme.colorScheme.primary.withOpacity(0.2)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: !_commentAsAnonymous
+                      ? theme.colorScheme.primary
+                      : Colors.grey.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isVerified ? Icons.verified : Icons.person,
+                    size: 14,
+                    color: !_commentAsAnonymous
+                        ? (isVerified ? Colors.blue : theme.colorScheme.primary)
+                        : Colors.grey.shade500,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '@$username',
+                    style: TextStyle(
+                      color: !_commentAsAnonymous
+                          ? theme.colorScheme.primary
+                          : Colors.grey.shade500,
+                      fontSize: 12,
+                      fontWeight: !_commentAsAnonymous
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -1929,11 +2218,54 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                   return Card(
                     color: Colors.grey.shade800,
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text(comment.content),
-                      subtitle: Text(
-                        DateFormat.yMMMd().add_jm().format(comment.createdAt),
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Author info row
+                          Row(
+                            children: [
+                              Icon(
+                                comment.isAnonymous
+                                    ? Icons.masks
+                                    : (comment.authorVerified
+                                        ? Icons.verified
+                                        : Icons.person),
+                                size: 14,
+                                color: comment.isAnonymous
+                                    ? Colors.grey.shade500
+                                    : (comment.authorVerified
+                                        ? Colors.blue
+                                        : Colors.orange),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                comment.authorDisplay,
+                                style: TextStyle(
+                                  color: comment.isAnonymous
+                                      ? Colors.grey.shade500
+                                      : Colors.grey.shade300,
+                                  fontSize: 12,
+                                  fontWeight: comment.isAnonymous
+                                      ? FontWeight.normal
+                                      : FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                DateFormat.yMMMd().add_jm().format(comment.createdAt),
+                                style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Comment content
+                          Text(
+                            comment.content,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -1942,43 +2274,98 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             },
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _commentController,
-                  decoration: InputDecoration(
-                    hintText: 'Add a comment...',
-                    filled: true,
-                    fillColor: const Color(0xFF212121),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                  onSubmitted: (_) => _postComment(),
+          if (!ref.watch(isAuthenticatedProvider))
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                ),
+                icon: const FaIcon(FontAwesomeIcons.rightToBracket, size: 16),
+                label: const Text('Sign in to join the conversation'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                  foregroundColor: theme.colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
-              const SizedBox(width: 8),
-              _isPostingComment
-                  ? const SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Comment identity toggle
+                _buildCommentIdentityToggle(),
+                const SizedBox(height: 8),
+                // Comment input row
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commentController,
+                        decoration: InputDecoration(
+                          hintText: 'Add a comment...',
+                          filled: true,
+                          fillColor: const Color(0xFF212121),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        ),
+                        onSubmitted: (_) => _postComment(),
                       ),
-                    )
-                  : IconButton(
-                      icon: const FaIcon(FontAwesomeIcons.paperPlane),
-                      onPressed: _postComment,
-                      color: theme.colorScheme.primary,
                     ),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    _isPostingComment
+                        ? const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            icon: const FaIcon(FontAwesomeIcons.paperPlane),
+                            onPressed: _postComment,
+                            color: theme.colorScheme.primary,
+                          ),
+                  ],
+                ),
+              ],
+            ),
         ],
       ),
     );
   }
+}
+
+void _showLoginDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title: const Text('Sign In Required', style: TextStyle(color: Colors.white)),
+      content: const Text(
+        'You need to be signed in to perform this action.',
+        style: TextStyle(color: Colors.grey),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          },
+          child: const Text('Sign In'),
+        ),
+      ],
+    ),
+  );
 }

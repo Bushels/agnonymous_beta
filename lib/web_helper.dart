@@ -1,6 +1,5 @@
 // Web-specific implementation
 // This file is only used when the app is compiled for web
-import 'dart:html' as html;
 import 'dart:js' as js;
 
 String? getWebEnvironmentVariable(String key) {

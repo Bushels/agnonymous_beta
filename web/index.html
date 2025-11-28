@@ -1,49 +1,79 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Anonymous agricultural transparency platform">
-  
-  <!-- iOS meta tags & icons -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Agnonymous">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-  
-  <title>Agnonymous</title>
-  <link rel="manifest" href="manifest.json">
-  
-  <!-- AdSense -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958728286012509"
-     crossorigin="anonymous"></script>
-</head>
-<body>
-  <!--
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
+    <meta
+      name="description"
+      content="Anonymous agricultural transparency platform"
+    />
+    <base href="/">
+
+    <!-- iOS meta tags & icons -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Agnonymous" />
+    <link rel="apple-touch-icon" href="icons/Icon-192.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+    <title>Agnonymous</title>
+    <link rel="manifest" href="manifest.json" />
+
+    <!-- AdSense -->
+    <script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958728286012509"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js"></script>
+  </head>
+  <body>
+    <!--
     Supabase Configuration
     NOTE: The anon key is designed to be public in client-side applications.
     Security is enforced through Row Level Security (RLS) policies in the database.
     See: https://supabase.com/docs/guides/auth/row-level-security
   -->
-  <script>
-    window.ENV = {
-      SUPABASE_URL: 'https://ibgsloyjxdopkvwqcqwh.supabase.co',
-      SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3Nsb3lqeGRvcGt2d3FjcXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2ODYzMzksImV4cCI6MjA2ODI2MjMzOX0.Ik1980vz4s_UxVuEfBm61-kcIzEH-Nt-hQtydZUeNTw'
-    };
-  </script>
-  
-  <!-- Service worker for PWA -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('flutter-first-frame', function () {
-        navigator.serviceWorker.register('flutter_service_worker.js');
-      });
-    }
-  </script>
-  
-  <script src="main.dart.js" type="application/javascript"></script>
-</body>
+    <script>
+      window.ENV = {
+        SUPABASE_URL: "https://ibgsloyjxdopkvwqcqwh.supabase.co",
+        SUPABASE_ANON_KEY: "sb_publishable_Ei5lzAuhoqPXaXi6frNnog_pfosrbku",
+      };
+
+      // Firebase Configuration
+      // Get your config from: Firebase Console > Project Settings > Your Apps > Web App
+      const firebaseConfig = {
+        apiKey: "AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        authDomain: "agnonymous-beta.firebaseapp.com",
+        projectId: "agnonymous-beta",
+        storageBucket: "agnonymous-beta.appspot.com",
+        messagingSenderId: "000000000000",
+        appId: "1:000000000000:web:xxxxxxxxxxxxxx",
+        measurementId: "G-XXXXXXXXXX"
+      };
+
+      // Initialize Firebase
+      if (typeof firebase !== 'undefined') {
+        firebase.initializeApp(firebaseConfig);
+        firebase.analytics();
+        console.log('Firebase Analytics initialized');
+      }
+    </script>
+
+    <!-- Service worker for PWA -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("flutter-first-frame", function () {
+          navigator.serviceWorker.register("flutter_service_worker.js");
+        });
+      }
+    </script>
+
+    <script src="main.dart.js" type="application/javascript"></script>
+  </body>
 </html>
