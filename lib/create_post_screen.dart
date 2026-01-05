@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'main.dart';
+import 'utils/ip_utils.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   const CreatePostScreen({super.key});
@@ -46,11 +47,20 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      // Ensure we have an anonymous session
+      var userId = supabase.auth.currentUser?.id;
       if (userId == null) {
-        throw 'User not authenticated. Cannot create post.';
+        // Sign in anonymously if not already
+        final authResponse = await supabase.auth.signInAnonymously();
+        userId = authResponse.user?.id;
+        if (userId == null) {
+          throw 'Failed to create anonymous session';
+        }
       }
-      
+
+      // Get IP last 3 digits for display
+      final ipLast3 = await IpUtils.getIpLast3();
+
       // Sanitize user input to prevent XSS attacks
       final sanitizedTitle = sanitizeInput(_titleController.text);
       final sanitizedContent = sanitizeInput(_contentController.text);
@@ -66,6 +76,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         'content': sanitizedContent,
         'category': _selectedCategory,
         'province_state': _selectedProvinceState,
+        'ip_last_3': ipLast3,  // Store last 3 digits of IP
       });
 
       // Refresh the posts feed

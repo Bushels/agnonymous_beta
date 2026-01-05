@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:logger/logger.dart';
 import 'package:html_unescape/html_unescape.dart';
+import 'utils/ip_utils.dart';
 
 // Conditional imports for web-only functionality
 import 'stub_web.dart' if (dart.library.html) 'web_helper.dart';
@@ -77,6 +78,7 @@ class Post {
   final String content;
   final String category;
   final String? provinceState;
+  final String? ipLast3;  // Last 3 digits of IP for minimal identity
   final DateTime createdAt;
   final int commentCount;
   final int voteCount;
@@ -87,6 +89,7 @@ class Post {
     required this.content,
     required this.category,
     this.provinceState,
+    this.ipLast3,
     required this.createdAt,
     required this.commentCount,
     required this.voteCount,
@@ -99,6 +102,7 @@ class Post {
       content: map['content'] ?? '',
       category: map['category'] ?? 'General',
       provinceState: map['province_state'],
+      ipLast3: map['ip_last_3'],
       createdAt: DateTime.parse(map['created_at']),
       commentCount: map['comment_count'] ?? 0,
       voteCount: map['vote_count'] ?? 0,
@@ -109,14 +113,21 @@ class Post {
 class Comment {
   final String id;
   final String content;
+  final String? ipLast3;  // Last 3 digits of IP for minimal identity
   final DateTime createdAt;
 
-  Comment({required this.id, required this.content, required this.createdAt});
+  Comment({
+    required this.id,
+    required this.content,
+    this.ipLast3,
+    required this.createdAt,
+  });
 
   factory Comment.fromMap(Map<String, dynamic> map) {
     return Comment(
       id: map['id'],
       content: map['content'],
+      ipLast3: map['ip_last_3'],
       createdAt: DateTime.parse(map['created_at']),
     );
   }
@@ -1462,6 +1473,26 @@ class _PostCardState extends ConsumerState<PostCard> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            // Posted by IP indicator
+            Row(
+              children: [
+                Icon(
+                  Icons.person_outline,
+                  size: 14,
+                  color: Colors.grey.shade500,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Posted by: ${widget.post.ipLast3 != null ? "...${widget.post.ipLast3}" : "...xxx"}',
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             Text(
               widget.post.title,
@@ -1842,8 +1873,16 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     setState(() => _isPostingComment = true);
 
     try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) throw 'Not authenticated';
+      // Ensure we have an anonymous session
+      var userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        final authResponse = await supabase.auth.signInAnonymously();
+        userId = authResponse.user?.id;
+        if (userId == null) throw 'Failed to create anonymous session';
+      }
+
+      // Get IP last 3 digits
+      final ipLast3 = await IpUtils.getIpLast3();
 
       // Sanitize comment content to prevent XSS attacks
       final sanitizedContent = sanitizeInput(content);
@@ -1856,6 +1895,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         'post_id': widget.postId,
         'anonymous_user_id': userId,
         'content': sanitizedContent,
+        'ip_last_3': ipLast3,
       });
       
       _commentController.clear();
@@ -1931,9 +1971,23 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       title: Text(comment.content),
-                      subtitle: Text(
-                        DateFormat.yMMMd().add_jm().format(comment.createdAt),
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(
+                            'Posted by: ${comment.ipLast3 != null ? "...${comment.ipLast3}" : "...xxx"}',
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          Text(
+                            DateFormat.yMMMd().add_jm().format(comment.createdAt),
+                            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
                   );
