@@ -111,37 +111,14 @@
 
     <!-- Defer non-critical scripts -->
     <script>
-      // Load Firebase Analytics after app is ready (non-blocking)
       window.addEventListener('flutter-first-frame', function () {
         // Service worker registration
         if ("serviceWorker" in navigator) {
           navigator.serviceWorker.register("flutter_service_worker.js");
         }
-        
-        // Lazy load Firebase Analytics
-        var firebaseApp = document.createElement('script');
-        firebaseApp.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js';
-        firebaseApp.onload = function() {
-          var firebaseAnalytics = document.createElement('script');
-          firebaseAnalytics.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js';
-          firebaseAnalytics.onload = function() {
-            if (typeof firebase !== 'undefined') {
-              firebase.initializeApp({
-                apiKey: "AIzaSyABNBiWyxVxKvDE5wknXQ_grq0BxPLVxK4",
-                authDomain: "agnonymousbeta.firebaseapp.com",
-                projectId: "agnonymousbeta",
-                storageBucket: "agnonymousbeta.firebasestorage.app",
-                messagingSenderId: "608676708895",
-                appId: "1:608676708895:web:7a5cb90f25e60e000e4b2a",
-                measurementId: "G-ELM6LM75Y9"
-              });
-              firebase.analytics();
-            }
-          };
-          document.head.appendChild(firebaseAnalytics);
-        };
-        document.head.appendChild(firebaseApp);
-        
+
+        // Firebase is initialized by Flutter/Dart - no JS initialization needed
+
         // Lazy load AdSense after a delay
         setTimeout(function() {
           var adsense = document.createElement('script');
