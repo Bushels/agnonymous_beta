@@ -83,6 +83,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         password: _passwordController.text,
         username: _usernameController.text.trim(),
         provinceState: _selectedProvince,
+        emailRedirectTo: 'https://agnonymous.news',
       );
 
       // Track successful signup
@@ -142,7 +143,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Join Agnonymous',
+                    'Agnonymous',
                     style: GoogleFonts.outfit(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -151,7 +152,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Speak your mind, anonymously.',
+                    'The Truth is in here.',
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       color: Colors.white70,

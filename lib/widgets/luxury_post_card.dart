@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../services/sound_service.dart';
 
 /// Parsed input price data from post content
 class InputPriceData {
@@ -88,6 +89,15 @@ class LuxuryPostCard extends StatefulWidget {
   final Widget? commentsWidget;
   final bool showSignInPrompt;
 
+  // Edit/Delete support
+  final bool isOwner;
+  final bool wasEdited;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  // Verification image for Input Prices
+  final String? imageUrl;
+
   const LuxuryPostCard({
     super.key,
     required this.title,
@@ -107,6 +117,11 @@ class LuxuryPostCard extends StatefulWidget {
     this.onFunnyVote,
     this.commentsWidget,
     this.showSignInPrompt = false,
+    this.isOwner = false,
+    this.wasEdited = false,
+    this.onEdit,
+    this.onDelete,
+    this.imageUrl,
   });
 
   @override
@@ -245,11 +260,26 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
                             color: Colors.grey.shade500,
                           ),
                         ),
+                        // Edited indicator
+                        if (widget.wasEdited) ...[
+                          _buildSmallDot(),
+                          Text(
+                            'edited',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
                 ),
               ),
+              // Edit/Delete menu for post owner
+              if (widget.isOwner && (widget.onEdit != null || widget.onDelete != null))
+                _buildPostMenu(),
             ],
           ),
           const SizedBox(height: 16),
@@ -264,6 +294,74 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPostMenu() {
+    return PopupMenuButton<String>(
+      icon: FaIcon(
+        FontAwesomeIcons.ellipsisVertical,
+        size: 16,
+        color: Colors.grey.shade500,
+      ),
+      color: const Color(0xFF1F2937),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withOpacity(0.1)),
+      ),
+      offset: const Offset(0, 40),
+      onSelected: (value) {
+        HapticFeedback.selectionClick();
+        if (value == 'edit' && widget.onEdit != null) {
+          widget.onEdit!();
+        } else if (value == 'delete' && widget.onDelete != null) {
+          widget.onDelete!();
+        }
+      },
+      itemBuilder: (context) => [
+        if (widget.onEdit != null)
+          PopupMenuItem<String>(
+            value: 'edit',
+            child: Row(
+              children: [
+                FaIcon(
+                  FontAwesomeIcons.penToSquare,
+                  size: 14,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Edit Post',
+                  style: GoogleFonts.inter(
+                    color: Colors.grey.shade300,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (widget.onDelete != null)
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Row(
+              children: [
+                FaIcon(
+                  FontAwesomeIcons.trash,
+                  size: 14,
+                  color: Colors.red.shade400,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Delete Post',
+                  style: GoogleFonts.inter(
+                    color: Colors.red.shade400,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -337,15 +435,36 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
                   color: const Color(0xFF84CC16).withOpacity(0.3),
                 ),
               ),
-              child: Text(
-                data.price!,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF84CC16),
-                  letterSpacing: -0.5,
-                ),
+              child: Column(
+                children: [
+                  Text(
+                    'INPUT PRICE',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF84CC16).withOpacity(0.8),
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    data.price!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF84CC16),
+                      letterSpacing: -1.0,
+                      shadows: [
+                        Shadow(
+                          color: const Color(0xFF84CC16).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -459,7 +578,202 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
               ),
             ),
           ],
+
+          // Verification image
+          if (widget.imageUrl != null) ...[
+            const SizedBox(height: 12),
+            _buildVerificationImage(),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationImage() {
+    return GestureDetector(
+      onTap: () => _showFullImage(context),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF84CC16).withOpacity(0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF84CC16).withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(11),
+                  topRight: Radius.circular(11),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const FaIcon(
+                    FontAwesomeIcons.camera,
+                    size: 12,
+                    color: Color(0xFF84CC16),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'VERIFICATION PHOTO',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF84CC16),
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const Spacer(),
+                  const FaIcon(
+                    FontAwesomeIcons.expand,
+                    size: 10,
+                    color: Color(0xFF84CC16),
+                  ),
+                ],
+              ),
+            ),
+            // Image
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(11),
+                bottomRight: Radius.circular(11),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 200,
+                ),
+                child: Image.network(
+                  widget.imageUrl!,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 150,
+                      color: Colors.grey.shade900,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                          strokeWidth: 2,
+                          color: const Color(0xFF84CC16),
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 100,
+                      color: Colors.grey.shade900,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            FaIcon(
+                              FontAwesomeIcons.image,
+                              size: 24,
+                              color: Colors.grey.shade600,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Image unavailable',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFullImage(BuildContext context) {
+    if (widget.imageUrl == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          children: [
+            // Full image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  widget.imageUrl!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      padding: const EdgeInsets.all(40),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade900,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FaIcon(
+                            FontAwesomeIcons.image,
+                            size: 48,
+                            color: Colors.grey.shade600,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Failed to load image',
+                            style: GoogleFonts.inter(
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Close button
+            Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -469,7 +783,9 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
     if (lowerType.contains('fertilizer')) return Colors.green;
     if (lowerType.contains('seed')) return Colors.amber;
     if (lowerType.contains('chemical') || lowerType.contains('herbicide') ||
-        lowerType.contains('fungicide') || lowerType.contains('pesticide')) return Colors.purple;
+        lowerType.contains('fungicide') || lowerType.contains('pesticide')) {
+      return Colors.purple;
+    }
     if (lowerType.contains('equipment')) return Colors.blue;
     return const Color(0xFF84CC16);
   }
@@ -678,23 +994,9 @@ class _LuxuryPostCardState extends State<LuxuryPostCard> {
   }
 
   Widget _buildSignInPrompt() {
-    return Row(
-      children: [
-        FaIcon(
-          FontAwesomeIcons.lock,
-          size: 14,
-          color: Colors.grey.shade500,
-        ),
-        const SizedBox(width: 10),
-        Text(
-          'Sign in to vote and comment',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            color: Colors.grey.shade500,
-          ),
-        ),
-      ],
-    );
+    // Extreme Simplification: Never show sign-in prompt.
+    // Interactions should be enabled for everyone (anonymous).
+    return const SizedBox.shrink();
   }
 
   Widget _buildCommentButton() {
@@ -779,7 +1081,9 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-class _FunnyActionButton extends StatelessWidget {
+/// Enhanced Funny Button with orange/coral color, hover effects, dynamic sizing,
+/// and laugh wiggle animation on click
+class _FunnyActionButton extends StatefulWidget {
   final int count;
   final VoidCallback? onTap;
 
@@ -789,39 +1093,241 @@ class _FunnyActionButton extends StatelessWidget {
   });
 
   @override
+  State<_FunnyActionButton> createState() => _FunnyActionButtonState();
+}
+
+class _FunnyActionButtonState extends State<_FunnyActionButton>
+    with TickerProviderStateMixin {
+  bool _isHovered = false;
+  int _previousCount = 0;
+  
+  // Animation controllers
+  late AnimationController _pressController;
+  late AnimationController _laughController;
+  late AnimationController _pulseController;
+  late AnimationController _countPopController;
+  
+  // Animations
+  late Animation<double> _pressScale;
+  late Animation<double> _laughWiggle;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _countPopScale;
+
+  // Orange/Coral color - psychologically associated with fun/humor
+  static const Color _funnyColor = Color(0xFFF97316);
+
+  @override
+  void initState() {
+    super.initState();
+    _previousCount = widget.count;
+    
+    // Press animation (scale down on press)
+    _pressController = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _pressScale = Tween<double>(begin: 1.0, end: 0.92).animate(
+      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
+    );
+    
+    // Laugh wiggle animation (shake side-to-side)
+    _laughController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _laughWiggle = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.08), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.08, end: -0.08), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -0.08, end: 0.06), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 0.06, end: -0.04), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -0.04, end: 0.02), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 0.02, end: 0.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _laughController, curve: Curves.easeOut));
+    
+    // Background pulse animation
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _pulseAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOut));
+    
+    // Count pop animation (when count increases)
+    _countPopController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _countPopScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.4, end: 0.9), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.9, end: 1.1), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.1, end: 1.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _countPopController, curve: Curves.easeOut));
+  }
+
+  @override
+  void didUpdateWidget(_FunnyActionButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Trigger count pop animation when count increases
+    if (widget.count > _previousCount) {
+      _countPopController.forward(from: 0);
+    }
+    _previousCount = widget.count;
+  }
+
+  @override
+  void dispose() {
+    _pressController.dispose();
+    _laughController.dispose();
+    _pulseController.dispose();
+    _countPopController.dispose();
+    super.dispose();
+  }
+
+  /// Calculate dynamic size multiplier based on vote count
+  double get _sizeMultiplier {
+    if (widget.count >= 20) return 1.2;  // Very popular
+    if (widget.count >= 6) return 1.1;   // Popular  
+    return 1.0;                           // Normal
+  }
+
+  /// Calculate glow intensity based on popularity
+  double get _glowIntensity {
+    if (widget.count >= 20) return 0.5;
+    if (widget.count >= 6) return 0.3;
+    if (widget.count >= 1) return 0.15;
+    return 0.1;
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _pressController.forward();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _pressController.reverse();
+  }
+
+  void _handleTapCancel() {
+    _pressController.reverse();
+  }
+
+  void _handleTap() {
+    // Trigger haptic feedback
+    HapticFeedback.lightImpact();
+    
+    // Play pop sound (respects user preference)
+    SoundService.playFunnyPop();
+    
+    // Start laugh wiggle animation
+    _laughController.forward(from: 0);
+    
+    // Start pulse animation
+    _pulseController.forward(from: 0);
+    
+    // Call the callback
+    widget.onTap?.call();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF8B5CF6).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF8B5CF6).withOpacity(0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            const FaIcon(
-              FontAwesomeIcons.faceLaughSquint,
-              size: 16,
-              color: Color(0xFF8B5CF6),
-            ),
-            if (count > 0) ...[
-              const SizedBox(width: 6),
-              Text(
-                '$count',
-                style: GoogleFonts.inter(
-                  color: const Color(0xFF8B5CF6),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+    final baseIconSize = 20.0 * _sizeMultiplier;
+    final baseFontSize = 14.0 * _sizeMultiplier;
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Tooltip(
+        message: 'Mark as funny',
+        preferBelow: false,
+        child: GestureDetector(
+          onTapDown: _handleTapDown,
+          onTapUp: _handleTapUp,
+          onTapCancel: _handleTapCancel,
+          onTap: _handleTap,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_pressScale, _pulseAnimation]),
+            builder: (context, child) {
+              final combinedScale = _pressScale.value * 
+                  (_isHovered ? 1.1 : 1.0) * 
+                  _pulseAnimation.value;
+              
+              return Transform.scale(
+                scale: combinedScale,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14 * _sizeMultiplier,
+                    vertical: 10 * _sizeMultiplier,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _funnyColor.withOpacity(_isHovered ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: _funnyColor.withOpacity(_isHovered ? 0.6 : 0.4),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _funnyColor.withOpacity(_glowIntensity * (_isHovered ? 1.5 : 1.0)),
+                        blurRadius: _isHovered ? 12 : 8,
+                        spreadRadius: _isHovered ? 2 : 0,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Laughing icon with wiggle animation
+                      AnimatedBuilder(
+                        animation: _laughWiggle,
+                        builder: (context, child) {
+                          return Transform.rotate(
+                            angle: _laughWiggle.value + (_isHovered ? 0.04 : 0),
+                            child: FaIcon(
+                              FontAwesomeIcons.faceLaughSquint,
+                              size: baseIconSize,
+                              color: _funnyColor,
+                            ),
+                          );
+                        },
+                      ),
+                      // Show count if > 0 with pop animation
+                      if (widget.count > 0) ...[
+                        SizedBox(width: 8 * _sizeMultiplier),
+                        AnimatedBuilder(
+                          animation: _countPopScale,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _countPopScale.value,
+                              child: Text(
+                                '${widget.count}',
+                                style: GoogleFonts.inter(
+                                  color: _funnyColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: baseFontSize,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                      // Fire indicator for very popular posts
+                      if (widget.count >= 20) ...[
+                        const SizedBox(width: 4),
+                        const Text('🔥', style: TextStyle(fontSize: 14)),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
 }
+
+

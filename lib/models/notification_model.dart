@@ -1,4 +1,5 @@
 /// Models for the notification system
+library;
 
 /// Notification type enum
 enum NotificationType {

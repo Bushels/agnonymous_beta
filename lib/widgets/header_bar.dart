@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/auth_provider.dart';
 import '../screens/leaderboard/leaderboard_screen.dart';
+import '../services/sound_service.dart';
 
 class HeaderBar extends ConsumerStatefulWidget {
   final Function(String) onSearchChanged;
@@ -15,6 +16,7 @@ class HeaderBar extends ConsumerStatefulWidget {
 
 class _HeaderBarState extends ConsumerState<HeaderBar> {
   bool isSearchExpanded = false;
+  bool _soundEnabled = SoundService.isSoundEnabled;
   final searchController = TextEditingController();
 
   @override
@@ -84,6 +86,26 @@ class _HeaderBarState extends ConsumerState<HeaderBar> {
                       isSearchExpanded = true;
                     });
                   },
+                ),
+
+                // Sound Toggle Icon
+                IconButton(
+                  icon: FaIcon(
+                    _soundEnabled ? FontAwesomeIcons.volumeHigh : FontAwesomeIcons.volumeXmark,
+                    size: 16,
+                    color: _soundEnabled ? const Color(0xFFF97316) : Colors.grey,
+                  ),
+                  onPressed: () async {
+                    await SoundService.toggleSound();
+                    setState(() {
+                      _soundEnabled = SoundService.isSoundEnabled;
+                    });
+                    // Play a test sound if just enabled
+                    if (_soundEnabled) {
+                      SoundService.playFunnyPop();
+                    }
+                  },
+                  tooltip: _soundEnabled ? 'Sound On' : 'Sound Off',
                 ),
 
                 // Leaderboard Icon

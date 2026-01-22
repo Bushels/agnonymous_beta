@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/glass_container.dart';
 import '../../widgets/reputation_badge.dart';
 import '../../widgets/ads/responsive_ad_banner.dart';
+import '../settings/settings_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -57,7 +58,11 @@ class ProfileScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () {
-              // TODO: Settings screen
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              );
             },
           ),
           IconButton(

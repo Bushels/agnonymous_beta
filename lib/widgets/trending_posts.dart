@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../main.dart' show supabase, Post;
 import '../widgets/truth_meter.dart';
+import '../screens/post_details_screen.dart';
 
 /// Provider for trending posts
 final trendingPostsProvider = FutureProvider<List<Post>>((ref) async {
@@ -113,9 +114,10 @@ class TrendingPostsWidget extends ConsumerWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
-            // TODO: Navigate to post detail
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Post details coming soon!')),
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => PostDetailsScreen(postId: post.id),
+              ),
             );
           },
           child: Padding(

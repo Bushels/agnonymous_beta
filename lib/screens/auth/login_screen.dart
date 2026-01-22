@@ -138,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'The truth about input prices.',
+                    'The Truth is in here.',
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       color: Colors.white70,

@@ -4,13 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../widgets/glass_container.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/pricing_provider.dart';
 import '../../providers/notifications_provider.dart';
-import '../../models/pricing_models.dart';
 import '../../models/notification_model.dart';
 import '../auth/login_screen.dart';
+import '../post_details_screen.dart';
 
-/// Notifications/Alerts screen for price alerts and system notifications
+/// Notifications/Alerts screen for system notifications
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -18,22 +17,7 @@ class NotificationsScreen extends ConsumerStatefulWidget {
   ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final isAuthenticated = ref.watch(isAuthenticatedProvider);
@@ -66,63 +50,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               ),
             ),
 
-            // Tab bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: const Color(0xFF84CC16).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: const Color(0xFF84CC16),
-                unselectedLabelColor: Colors.grey,
-                labelStyle: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-                dividerColor: Colors.transparent,
-                tabs: const [
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        FaIcon(FontAwesomeIcons.dollarSign, size: 14),
-                        SizedBox(width: 8),
-                        Text('Price Alerts'),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        FaIcon(FontAwesomeIcons.bell, size: 14),
-                        SizedBox(width: 8),
-                        Text('Activity'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 16),
 
-            // Tab content
+            // Content
             Expanded(
               child: isAuthenticated
-                  ? TabBarView(
-                      controller: _tabController,
-                      children: const [
-                        _PriceAlertsTab(),
-                        _ActivityTab(),
-                      ],
-                    )
+                  ? const _ActivityTab()
                   : _buildSignInPrompt(),
             ),
           ],
@@ -154,7 +87,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               ),
               const SizedBox(height: 24),
               Text(
-                'Sign In to Get Alerts',
+                'Sign In to Get Notifications',
                 style: GoogleFonts.outfit(
                   color: Colors.white,
                   fontSize: 20,
@@ -163,7 +96,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               ),
               const SizedBox(height: 12),
               Text(
-                'Create an account to set up price alerts and receive notifications about your posts.',
+                'Create an account to receive notifications about your posts.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   color: Colors.grey,
@@ -188,228 +121,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Price alerts tab content
-class _PriceAlertsTab extends ConsumerWidget {
-  const _PriceAlertsTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final alertsState = ref.watch(priceAlertsProvider);
-
-    if (alertsState.isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (alertsState.error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const FaIcon(FontAwesomeIcons.triangleExclamation,
-              color: Colors.red, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading alerts',
-              style: GoogleFonts.inter(color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (alertsState.alerts.isEmpty) {
-      return _buildEmptyAlerts();
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: alertsState.alerts.length,
-      itemBuilder: (context, index) => _PriceAlertCard(alert: alertsState.alerts[index]),
-    );
-  }
-
-  Widget _buildEmptyAlerts() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const FaIcon(
-                FontAwesomeIcons.chartLine,
-                size: 48,
-                color: Color(0xFFF59E0B),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No Price Alerts Yet',
-              style: GoogleFonts.outfit(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Set up price alerts on products you want to track. Get notified when prices drop below or rise above your target.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildAlertTypeChip('Below Target', FontAwesomeIcons.arrowDown, Colors.green),
-                const SizedBox(width: 12),
-                _buildAlertTypeChip('Above Target', FontAwesomeIcons.arrowUp, Colors.red),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertTypeChip(String label, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FaIcon(icon, size: 12, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Price alert card widget
-class _PriceAlertCard extends ConsumerWidget {
-  final PriceAlert alert;
-
-  const _PriceAlertCard({required this.alert});
-
-  String _getAlertTitle() {
-    // Show product type or product ID based on what's available
-    if (alert.productType != null) {
-      return '${alert.productType![0].toUpperCase()}${alert.productType!.substring(1)} Alert';
-    }
-    return 'Price Alert';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isBelow = alert.alertType == 'below';
-    final color = isBelow ? Colors.green : Colors.red;
-    final icon = isBelow ? FontAwesomeIcons.arrowDown : FontAwesomeIcons.arrowUp;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GlassContainer(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: FaIcon(icon, size: 20, color: color),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _getAlertTitle(),
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        'Target: ',
-                        style: GoogleFonts.inter(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        alert.targetPrice != null
-                            ? formatPrice(alert.targetPrice!, 'CAD')
-                            : 'Any price',
-                        style: GoogleFonts.inter(
-                          color: color,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (alert.provinceState != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            alert.provinceState!,
-                            style: GoogleFonts.inter(
-                              color: Colors.grey,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Switch(
-              value: alert.isActive,
-              activeColor: const Color(0xFF84CC16),
-              onChanged: (_) {
-                ref.read(priceAlertsProvider.notifier).toggleAlert(alert.id);
-              },
-            ),
-          ],
         ),
       ),
     );
@@ -500,7 +211,15 @@ class _ActivityTab extends ConsumerWidget {
                           .read(notificationsProvider.notifier)
                           .markAsRead([notification.id]);
                     }
-                    // TODO: Navigate to post if postId exists
+                    // Navigate to post if postId exists
+                    if (notification.postId != null) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              PostDetailsScreen(postId: notification.postId!),
+                        ),
+                      );
+                    }
                   },
                   onDismiss: () {
                     ref

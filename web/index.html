@@ -7,32 +7,79 @@
       name="description"
       content="Anonymous agricultural transparency platform"
     />
-    <base href="/">
+    <base href="/" />
 
     <!-- iOS meta tags & icons -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Agnonymous" />
     <link rel="apple-touch-icon" href="icons/Icon-192.png" />
 
-    <!-- Favicon -->
+    <!-- Single favicon only -->
     <link rel="icon" type="image/png" href="favicon.png" />
 
     <title>Agnonymous</title>
     <link rel="manifest" href="manifest.json" />
 
-    <!-- AdSense -->
-    <script
-      async
-      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958728286012509"
-      crossorigin="anonymous"
-    ></script>
-
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js"></script>
+    <!-- Defer non-critical scripts to after page load -->
+    <style>
+      body {
+        margin: 0;
+        background-color: #111827;
+      }
+      #loading-indicator {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #111827;
+        z-index: 9999;
+        transition: opacity 0.3s ease-out;
+      }
+      .loading-logo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 20px;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+      .loading-bar-container {
+        width: 200px;
+        height: 4px;
+        background-color: rgba(74, 222, 128, 0.2);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .loading-bar {
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg, #4ade80, #22c55e);
+        border-radius: 2px;
+        animation: loadingSlide 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.7; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.05); }
+      }
+      @keyframes loadingSlide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(350%); }
+      }
+    </style>
   </head>
   <body>
+    <div id="loading-indicator">
+      <img src="icons/Icon-192.png" class="loading-logo" alt="Agnonymous" />
+      <div class="loading-bar-container">
+        <div class="loading-bar"></div>
+      </div>
+    </div>
+
     <!--
     Supabase Configuration
     NOTE: The anon key is designed to be public in client-side applications.
@@ -42,38 +89,68 @@
     <script>
       window.ENV = {
         SUPABASE_URL: "https://ibgsloyjxdopkvwqcqwh.supabase.co",
-        SUPABASE_ANON_KEY: "sb_publishable_Ei5lzAuhoqPXaXi6frNnog_pfosrbku",
+        SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3Nsb3lqeGRvcGt2d3FjcXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2ODYzMzksImV4cCI6MjA2ODI2MjMzOX0.Ik1980vz4s_UxVuEfBm61-kcIzEH-Nt-hQtydZUeNTw",
       };
-
-      // Firebase Configuration
-      // Get your config from: Firebase Console > Project Settings > Your Apps > Web App
-      const firebaseConfig = {
-        apiKey: "AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        authDomain: "agnonymous-beta.firebaseapp.com",
-        projectId: "agnonymous-beta",
-        storageBucket: "agnonymous-beta.appspot.com",
-        messagingSenderId: "000000000000",
-        appId: "1:000000000000:web:xxxxxxxxxxxxxx",
-        measurementId: "G-XXXXXXXXXX"
-      };
-
-      // Initialize Firebase
-      if (typeof firebase !== 'undefined') {
-        firebase.initializeApp(firebaseConfig);
-        firebase.analytics();
-        console.log('Firebase Analytics initialized');
-      }
     </script>
 
-    <!-- Service worker for PWA -->
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("flutter-first-frame", function () {
-          navigator.serviceWorker.register("flutter_service_worker.js");
-        });
-      }
-    </script>
-
+    <!-- Main Flutter app - load this first! -->
     <script src="main.dart.js" type="application/javascript"></script>
+
+    <!-- Handle loading indicator removal -->
+    <script>
+      window.addEventListener('flutter-first-frame', function () {
+        var indicator = document.getElementById('loading-indicator');
+        if (indicator) {
+          indicator.style.opacity = '0';
+          setTimeout(function () {
+            indicator.remove();
+          }, 300);
+        }
+      });
+    </script>
+
+    <!-- Defer non-critical scripts -->
+    <script>
+      // Load Firebase Analytics after app is ready (non-blocking)
+      window.addEventListener('flutter-first-frame', function () {
+        // Service worker registration
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("flutter_service_worker.js");
+        }
+        
+        // Lazy load Firebase Analytics
+        var firebaseApp = document.createElement('script');
+        firebaseApp.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js';
+        firebaseApp.onload = function() {
+          var firebaseAnalytics = document.createElement('script');
+          firebaseAnalytics.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js';
+          firebaseAnalytics.onload = function() {
+            if (typeof firebase !== 'undefined') {
+              firebase.initializeApp({
+                apiKey: "AIzaSyABNBiWyxVxKvDE5wknXQ_grq0BxPLVxK4",
+                authDomain: "agnonymousbeta.firebaseapp.com",
+                projectId: "agnonymousbeta",
+                storageBucket: "agnonymousbeta.firebasestorage.app",
+                messagingSenderId: "608676708895",
+                appId: "1:608676708895:web:7a5cb90f25e60e000e4b2a",
+                measurementId: "G-ELM6LM75Y9"
+              });
+              firebase.analytics();
+            }
+          };
+          document.head.appendChild(firebaseAnalytics);
+        };
+        document.head.appendChild(firebaseApp);
+        
+        // Lazy load AdSense after a delay
+        setTimeout(function() {
+          var adsense = document.createElement('script');
+          adsense.async = true;
+          adsense.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958728286012509';
+          adsense.crossOrigin = 'anonymous';
+          document.head.appendChild(adsense);
+        }, 2000);
+      });
+    </script>
   </body>
 </html>
