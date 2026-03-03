@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/notification_model.dart';
-import '../main.dart' show supabase, logger;
+import '../core/utils/globals.dart';
 
 // ============================================
 // NOTIFICATIONS STATE

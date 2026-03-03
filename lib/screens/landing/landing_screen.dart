@@ -6,7 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/trending_posts.dart';
 import '../auth/login_screen.dart';
 import '../auth/signup_screen.dart';
-import '../../main.dart' show HomeScreen;
+import '../../features/community/screens/community_feed_screen.dart' show HomeScreen;
 
 /// Landing screen with glassmorphism and smooth animations
 class LandingScreen extends ConsumerStatefulWidget {

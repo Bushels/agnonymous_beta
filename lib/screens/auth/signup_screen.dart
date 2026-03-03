@@ -5,7 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 import '../../providers/auth_provider.dart';
 import '../../widgets/glass_container.dart';
 import '../../services/analytics_service.dart';
-import '../../main.dart' show PROVINCES_STATES, supabase, logger;
+import '../../core/utils/globals.dart';
+import '../../app/constants.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});

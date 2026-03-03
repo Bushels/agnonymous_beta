@@ -11,7 +11,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:confetti/confetti.dart';
-import '../../main.dart' show PROVINCES_STATES;
+import '../../app/constants.dart';
 import '../../models/fertilizer_ticker_models.dart';
 import '../../providers/fertilizer_ticker_provider.dart';
 

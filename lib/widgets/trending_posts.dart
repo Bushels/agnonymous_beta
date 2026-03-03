@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../main.dart' show supabase, Post;
+import '../core/utils/globals.dart';
+import '../core/models/post.dart';
 import '../widgets/truth_meter.dart';
 import '../screens/post_details_screen.dart';
 

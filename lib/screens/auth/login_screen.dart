@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/glass_container.dart';
-import '../../main.dart' show MainNavigationShell;
+import '../../app/navigation_shell.dart' show MainNavigationShell;
 import '../../services/analytics_service.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';

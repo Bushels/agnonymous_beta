@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User, AuthChangeEvent, Session;
 import 'package:supabase_flutter/supabase_flutter.dart' as supa show AuthState;
 import '../models/user_profile.dart';
-import '../main.dart' show supabase, logger;
+import '../core/utils/globals.dart';
 
 /// Auth state
 class AuthState {

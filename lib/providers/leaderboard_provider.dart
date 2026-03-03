@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_profile.dart';
-import '../main.dart' show supabase, logger;
+import '../core/utils/globals.dart';
 
 /// Leaderboard entry
 class LeaderboardEntry {

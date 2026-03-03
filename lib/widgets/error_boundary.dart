@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../main.dart' show logger;
+import '../core/utils/globals.dart';
 
 /// A widget that catches errors in its child widget tree and displays
 /// a fallback UI instead of crashing the entire app.

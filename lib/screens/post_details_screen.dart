@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../main.dart';
+import '../core/utils/globals.dart';
+import '../core/models/models.dart';
+import '../features/community/providers/community_providers.dart';
 import '../widgets/luxury_post_card.dart';
 import '../widgets/truth_meter.dart';
 

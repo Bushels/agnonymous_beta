@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 import '../../widgets/glass_container.dart';
-import '../../main.dart' show supabase, logger;
+import '../../core/utils/globals.dart';
 import 'login_screen.dart';
 
 /// Screen shown when user needs to verify their email

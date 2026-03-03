@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import '../main.dart'; // To access supabase client
+import '../core/utils/globals.dart';
 
 final presenceProvider = NotifierProvider<PresenceNotifier, int>(PresenceNotifier.new);
 

@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/fertilizer_ticker_models.dart';
-import '../main.dart' show supabase, logger;
+import '../core/utils/globals.dart';
 import '../services/anonymous_id_service.dart';
 
 /// Provider for ALL raw ticker entries (historically limited, e.g. 90 days)
