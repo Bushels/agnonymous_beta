@@ -134,7 +134,7 @@ BEGIN
   WHERE fp.commodity = target_commodity
     AND fp.is_front_month = true
   ORDER BY fp.trade_date DESC
-  LIMIT num_days;
+  LIMIT LEAST(num_days, 365);
 END;
 $$ LANGUAGE plpgsql STABLE;
 

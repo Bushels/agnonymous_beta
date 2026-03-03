@@ -513,7 +513,7 @@ Deno.serve(async (_req) => {
       .eq("source_name", SOURCE_NAME);
 
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: "Pipeline execution failed. Check logs for details." }),
       { status: 500, headers: corsHeaders }
     );
   }

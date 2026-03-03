@@ -114,7 +114,7 @@ BEGIN
   FROM cot_positions cp
   WHERE cp.commodity = commodity_filter
   ORDER BY cp.report_date DESC
-  LIMIT num_weeks;
+  LIMIT LEAST(num_weeks, 52);
 END;
 $$ LANGUAGE plpgsql STABLE;
 
@@ -145,6 +145,6 @@ BEGIN
   FROM cot_positions cp
   WHERE cp.commodity = target_commodity
   ORDER BY cp.report_date DESC
-  LIMIT num_weeks;
+  LIMIT LEAST(num_weeks, 52);
 END;
 $$ LANGUAGE plpgsql STABLE;

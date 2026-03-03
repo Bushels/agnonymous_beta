@@ -1,8 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agnonymous_beta/core/utils/globals.dart';
-import 'package:logger/logger.dart';
-
-final _logger = Logger(level: Level.debug);
 
 /// CFTC Commitments of Traders (COT) data providers.
 /// Reads from the `cot_positions` table populated by the fetch-cot-data Edge Function.
@@ -117,7 +114,7 @@ final cotPositionsProvider =
         .map((row) => CotPosition.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   } catch (e) {
-    _logger.e('Error fetching COT positions', error: e);
+    logger.e('Error fetching COT positions', error: e);
     rethrow;
   }
 });
@@ -133,7 +130,7 @@ final cotNetChangeProvider =
     });
     return List<Map<String, dynamic>>.from(response as List);
   } catch (e) {
-    _logger.e('Error fetching COT net changes', error: e);
+    logger.e('Error fetching COT net changes', error: e);
     rethrow;
   }
 });
@@ -152,7 +149,7 @@ final cotPipelineStatusProvider =
         .maybeSingle();
     return response;
   } catch (e) {
-    _logger.e('Error fetching COT pipeline status', error: e);
+    logger.e('Error fetching COT pipeline status', error: e);
     return null;
   }
 });

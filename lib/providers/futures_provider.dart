@@ -1,8 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agnonymous_beta/core/utils/globals.dart';
-import 'package:logger/logger.dart';
-
-final _logger = Logger(level: Level.debug);
 
 /// ICE/CBOT Futures price providers.
 /// Reads from the `futures_prices` table populated by the fetch-futures-prices
@@ -156,7 +153,7 @@ final frontMonthPriceProvider =
         .map((row) => FuturesPrice.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   } catch (e) {
-    _logger.e('Error fetching front-month prices', error: e);
+    logger.e('Error fetching front-month prices', error: e);
     rethrow;
   }
 });
@@ -173,7 +170,7 @@ final contractCurveProvider =
         .map((row) => FuturesPrice.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   } catch (e) {
-    _logger.e('Error fetching contract curve', error: e);
+    logger.e('Error fetching contract curve', error: e);
     rethrow;
   }
 });
@@ -194,7 +191,7 @@ final latestFuturesPriceProvider =
     if (response == null) return null;
     return FuturesPrice.fromMap(Map<String, dynamic>.from(response));
   } catch (e) {
-    _logger.e('Error fetching latest futures price', error: e);
+    logger.e('Error fetching latest futures price', error: e);
     return null;
   }
 });
@@ -213,7 +210,7 @@ final futuresPipelineStatusProvider =
         .maybeSingle();
     return response;
   } catch (e) {
-    _logger.e('Error fetching futures pipeline status', error: e);
+    logger.e('Error fetching futures pipeline status', error: e);
     return null;
   }
 });
