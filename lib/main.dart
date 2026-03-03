@@ -51,13 +51,6 @@ Future<void> main() async {
     supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
   }
 
-  // FALLBACK: Hardcoded values for Web (Safe because Anon Key is public)
-  if (kIsWeb && (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false)) {
-    logger.w('Using hardcoded fallback credentials for Web');
-    supabaseUrl = "https://ibgsloyjxdopkvwqcqwh.supabase.co";
-    supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3Nsb3lqeGRvcGt2d3FjcXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2ODYzMzksImV4cCI6MjA2ODI2MjMzOX0.Ik1980vz4s_UxVuEfBm61-kcIzEH-Nt-hQtydZUeNTw";
-  }
-
   // Try .env file only if still missing (development only, adds latency)
   if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
     try {

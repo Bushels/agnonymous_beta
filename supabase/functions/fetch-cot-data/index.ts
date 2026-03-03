@@ -31,6 +31,10 @@ const FETCH_HEADERS = {
   Accept: "text/plain,*/*",
 };
 
+// Maximum retry attempts for transient errors
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MS = [1000, 3000, 8000]; // Exponential-ish backoff
+
 // CFTC commodity code -> normalized name
 const COMMODITY_CODE_MAP: Record<string, string> = {
   "135741": "CANOLA",
@@ -61,6 +65,54 @@ interface CotRow {
   non_commercial_short: number;
   non_commercial_spreads: number;
   open_interest: number;
+}
+
+/**
+ * Fetch a URL with retries and exponential backoff.
+ * Retries on network errors, 5xx server errors, and 429 rate limits.
+ * Does not retry on 4xx client errors (except 429).
+ */
+async function fetchWithRetry(
+  url: string,
+  headers: Record<string, string>
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, { headers });
+
+      // Don't retry on 4xx client errors (except 429)
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        return response;
+      }
+
+      // Retry on 429 (rate limited) or 5xx (server error)
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_BACKOFF_MS[attempt] || 8000;
+          console.warn(
+            `HTTP ${response.status} on attempt ${attempt + 1}, retrying in ${delay}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_BACKOFF_MS[attempt] || 8000;
+        console.warn(
+          `Fetch error on attempt ${attempt + 1}: ${lastError.message}, retrying in ${delay}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError || new Error(`Failed to fetch ${url} after ${MAX_RETRIES} retries`);
 }
 
 /**
@@ -364,7 +416,7 @@ Deno.serve(async (_req) => {
   try {
     // 1. Download the CFTC report
     console.log(`Fetching CFTC COT report from ${COT_REPORT_URL}`);
-    const response = await fetch(COT_REPORT_URL, { headers: FETCH_HEADERS });
+    const response = await fetchWithRetry(COT_REPORT_URL, FETCH_HEADERS);
 
     if (!response.ok) {
       throw new Error(

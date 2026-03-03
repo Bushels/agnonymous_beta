@@ -1,6 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:agnonymous_beta/core/utils/globals.dart' show logger;
 
 /// Analytics service for tracking user events and screen views.
 /// Uses Firebase Analytics for comprehensive app analytics.
@@ -20,14 +20,10 @@ class AnalyticsService {
       _analytics = FirebaseAnalytics.instance;
       _observer = FirebaseAnalyticsObserver(analytics: _analytics!);
       _isInitialized = true;
-      if (kDebugMode) {
-        print('Analytics: Firebase Analytics initialized successfully');
-      }
+      logger.i('Analytics: Firebase Analytics initialized successfully');
     } catch (e) {
       _isInitialized = false;
-      if (kDebugMode) {
-        print('Analytics: Firebase Analytics not available - $e');
-      }
+      logger.w('Analytics: Firebase Analytics not available - $e');
     }
   }
 
@@ -53,13 +49,9 @@ class AnalyticsService {
         screenName: screenName,
         screenClass: screenClass ?? screenName,
       );
-      if (kDebugMode) {
-        print('Analytics: Screen view logged - $screenName');
-      }
+      logger.d('Analytics: Screen view logged - $screenName');
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging screen view: $e');
-      }
+      logger.e('Analytics error logging screen view', error: e);
     }
   }
 
@@ -80,9 +72,7 @@ class AnalyticsService {
         },
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging post_created: $e');
-      }
+      logger.e('Analytics error logging post_created', error: e);
     }
   }
 
@@ -105,9 +95,7 @@ class AnalyticsService {
         },
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging input_price_submitted: $e');
-      }
+      logger.e('Analytics error logging input_price_submitted', error: e);
     }
   }
 
@@ -124,9 +112,7 @@ class AnalyticsService {
         },
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging vote_cast: $e');
-      }
+      logger.e('Analytics error logging vote_cast', error: e);
     }
   }
 
@@ -136,9 +122,7 @@ class AnalyticsService {
     try {
       await _analytics!.logEvent(name: 'comment_posted');
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging comment_posted: $e');
-      }
+      logger.e('Analytics error logging comment_posted', error: e);
     }
   }
 
@@ -157,9 +141,7 @@ class AnalyticsService {
         );
       }
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging sign_up: $e');
-      }
+      logger.e('Analytics error logging sign_up', error: e);
     }
   }
 
@@ -169,9 +151,7 @@ class AnalyticsService {
     try {
       await _analytics!.logLogin(loginMethod: method);
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging login: $e');
-      }
+      logger.e('Analytics error logging login', error: e);
     }
   }
 
@@ -184,9 +164,7 @@ class AnalyticsService {
         parameters: {'category': category},
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging category_filter: $e');
-      }
+      logger.e('Analytics error logging category_filter', error: e);
     }
   }
 
@@ -196,9 +174,7 @@ class AnalyticsService {
     try {
       await _analytics!.logSearch(searchTerm: searchTerm);
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging search: $e');
-      }
+      logger.e('Analytics error logging search', error: e);
     }
   }
 
@@ -217,9 +193,7 @@ class AnalyticsService {
         },
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error logging post_view: $e');
-      }
+      logger.e('Analytics error logging post_view', error: e);
     }
   }
 
@@ -232,9 +206,7 @@ class AnalyticsService {
         value: provinceState,
       );
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error setting user location: $e');
-      }
+      logger.e('Analytics error setting user location', error: e);
     }
   }
 
@@ -244,9 +216,7 @@ class AnalyticsService {
     try {
       await _analytics!.setUserId(id: userId);
     } catch (e) {
-      if (kDebugMode) {
-        print('Analytics error setting user id: $e');
-      }
+      logger.e('Analytics error setting user id', error: e);
     }
   }
 }
