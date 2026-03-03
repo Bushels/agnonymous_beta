@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:logger/logger.dart';
-import 'package:html_unescape/html_unescape.dart';
 
 // Conditional imports for web-only functionality
 import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+
+// Re-export pure utility functions from helpers.dart
+export 'package:agnonymous_beta/core/utils/helpers.dart';
 
 // --- SUPABASE CLIENT ---
 final supabase = Supabase.instance.client;
@@ -23,20 +25,6 @@ final logger = Logger(
   ),
   level: kReleaseMode ? Level.warning : Level.debug,
 );
-
-// --- HTML SANITIZATION ---
-final htmlUnescape = HtmlUnescape();
-
-/// Sanitize user input to prevent XSS attacks
-String sanitizeInput(String input) {
-  // Remove any HTML tags
-  String sanitized = input.replaceAll(RegExp(r'<[^>]*>'), '');
-  // Decode HTML entities
-  sanitized = htmlUnescape.convert(sanitized);
-  // Trim whitespace
-  sanitized = sanitized.trim();
-  return sanitized;
-}
 
 String? getWebEnvironmentVariable(String key) {
   if (kIsWeb) {
@@ -55,23 +43,4 @@ String? getWebEnvironmentVariable(String key) {
     }
   }
   return null;
-}
-
-// --- UTILITY FUNCTIONS ---
-String getIconForCategory(String category) {
-  switch (category.toLowerCase()) {
-    case 'farming': return '🚜';
-    case 'livestock': return '🐄';
-    case 'ranching': return '🤠';
-    case 'crops': return '🌾';
-    case 'markets': return '📈';
-    case 'weather': return '🌦️';
-    case 'chemicals': return '🧪';
-    case 'equipment': return '🔧';
-    case 'politics': return '🏛️';
-    case 'input prices': return '💰';
-    case 'general': return '📝';
-    case 'other': return '🔗';
-    default: return '📝';
-  }
 }
