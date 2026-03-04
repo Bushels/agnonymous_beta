@@ -7,11 +7,14 @@ import 'package:intl/intl.dart';
 import '../../providers/grain_data_provider.dart';
 import '../../providers/grain_data_live_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/my_farm_provider.dart';
+import '../../models/crop_plan.dart';
 import '../../widgets/glass_container.dart';
 import '../../widgets/ticker/fertilizer_ticker.dart';
 import '../../widgets/ticker/sparkline_widget.dart';
 import '../../features/community/providers/community_providers.dart';
 import 'canola_thesis_screen.dart';
+import '../my_farm/my_farm_onboarding_screen.dart';
 
 class HomeDashboardScreen extends ConsumerWidget {
   const HomeDashboardScreen({super.key});
@@ -21,6 +24,8 @@ class HomeDashboardScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final globalStats = ref.watch(globalGrainStatsProvider);
     final pipelineStatus = ref.watch(pipelineStatusProvider);
+    final hasFarmProfile = ref.watch(hasFarmProfileProvider);
+    final cropPlans = ref.watch(cropPlansProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -48,6 +53,11 @@ class HomeDashboardScreen extends ConsumerWidget {
           // Canola thesis deep-dive card
           SliverToBoxAdapter(
             child: _buildCanolaThesisCard(context),
+          ),
+
+          // My Farm: CTA or breakeven summary
+          SliverToBoxAdapter(
+            child: _buildMyFarmSection(context, hasFarmProfile, cropPlans),
           ),
 
           // Grain highlights section
@@ -322,6 +332,180 @@ class HomeDashboardScreen extends ConsumerWidget {
         ),
       ),
     ).animate().fade(duration: 400.ms, delay: 150.ms).slideY(begin: 0.05);
+  }
+
+  Widget _buildMyFarmSection(
+    BuildContext context,
+    AsyncValue<bool> hasFarmProfile,
+    AsyncValue<List<CropPlan>> cropPlans,
+  ) {
+    return hasFarmProfile.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (hasProfile) {
+        if (!hasProfile) {
+          // CTA card to set up My Farm
+          return _buildMyFarmCta(context);
+        }
+        // Breakeven summary cards
+        return cropPlans.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (plans) {
+            if (plans.isEmpty) return _buildMyFarmCta(context);
+            return _buildBreakevenSummary(plans);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMyFarmCta(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: LuxuryGlassContainer(
+        blur: 12,
+        opacity: 0.08,
+        glowColor: const Color(0xFF10B981),
+        glowIntensity: 0.2,
+        padding: const EdgeInsets.all(16),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const MyFarmOnboardingScreen(),
+            ),
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.agriculture,
+                color: Color(0xFF10B981),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Set Up My Farm',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Track your breakeven price and see if selling today makes money',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF94A3B8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF64748B),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    ).animate().fade(duration: 400.ms, delay: 200.ms).slideY(begin: 0.05);
+  }
+
+  Widget _buildBreakevenSummary(List<CropPlan> plans) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'My Breakeven',
+            style: GoogleFonts.inter(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 80,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: plans.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final plan = plans[index];
+                final breakeven = plan.breakevenPricePerBu ??
+                    plan.calculatedBreakeven;
+                final hasData = breakeven != null;
+
+                return GlassContainer(
+                  blur: 10,
+                  opacity: 0.08,
+                  borderRadius: BorderRadius.circular(14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        plan.commodity,
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF94A3B8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            hasData
+                                ? '\$${breakeven.toStringAsFixed(2)}'
+                                : '--',
+                            style: GoogleFonts.outfit(
+                              color: hasData
+                                  ? const Color(0xFF84CC16)
+                                  : const Color(0xFF64748B),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            '/bu',
+                            style: GoogleFonts.inter(
+                              color: const Color(0xFF64748B),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ).animate().fade(duration: 400.ms, delay: 200.ms).slideY(begin: 0.05);
   }
 
   Widget _buildCommunityPulse(WidgetRef ref) {
