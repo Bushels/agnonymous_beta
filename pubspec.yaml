@@ -31,6 +31,22 @@ dependencies:
   http: ^1.6.0
   flutter_animate: ^4.5.2
   confetti: ^0.8.0
+  sqlite3: 2.0.0
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  go_router: ^17.1.0
+  shimmer: ^3.0.0
+  cached_network_image: ^3.4.1
+  flutter_hooks: ^0.21.3+1
+  hooks_riverpod: ^3.2.1
+  firebase_messaging: ^15.2.10
+  flutter_map: ^8.2.2
+  posthog_flutter: ^5.15.2
+  sqlite3_flutter_libs: 0.5.18
+  drift: 2.14.0
+  fl_chart: ^1.1.1
+  flutter_map_marker_cluster_plus: ^1.4.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:
@@ -38,6 +54,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
   build_runner: ^2.10.4
+  mocktail: ^1.0.4
+  patrol_cli: ^4.1.0
+  patrol: ^4.1.1
 
 flutter_launcher_icons:
   android: true
@@ -52,3 +71,4 @@ flutter:
   assets:
     - .env
     - assets/images/
+    - assets/grain_data.sqlite

@@ -8,7 +8,9 @@ import '../../providers/grain_data_provider.dart';
 import '../../providers/grain_data_live_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/my_farm_provider.dart';
+import '../../providers/elevator_locations_provider.dart';
 import '../../models/crop_plan.dart';
+import '../../models/elevator_location.dart';
 import '../../widgets/glass_container.dart';
 import '../../widgets/ticker/fertilizer_ticker.dart';
 import '../../widgets/ticker/sparkline_widget.dart';
@@ -58,6 +60,11 @@ class HomeDashboardScreen extends ConsumerWidget {
           // My Farm: CTA or breakeven summary
           SliverToBoxAdapter(
             child: _buildMyFarmSection(context, hasFarmProfile, cropPlans),
+          ),
+
+          // Nearby Elevators (only when user has a farm profile)
+          SliverToBoxAdapter(
+            child: _buildNearbyElevators(context, ref, hasFarmProfile),
           ),
 
           // Grain highlights section
@@ -508,6 +515,96 @@ class HomeDashboardScreen extends ConsumerWidget {
     ).animate().fade(duration: 400.ms, delay: 200.ms).slideY(begin: 0.05);
   }
 
+  Widget _buildNearbyElevators(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<bool> hasFarmProfile,
+  ) {
+    return hasFarmProfile.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (hasProfile) {
+        if (!hasProfile) return const SizedBox.shrink();
+
+        // Fetch the farm profile to get province, then show nearby elevators.
+        final farmProfile = ref.watch(farmProfileProvider);
+
+        return farmProfile.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (profile) {
+            if (profile == null) return const SizedBox.shrink();
+
+            // Fetch elevators in the farmer's province (limited to 3).
+            final elevators = ref.watch(elevatorLocationsProvider(
+              ElevatorFilterParams(province: profile.province, limit: 3),
+            ));
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Nearby Elevators',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          // Navigate to Markets tab (index 1) then to Map tab (index 4).
+                          // For now, use a simple approach: switch to the Markets screen's Map tab.
+                          // The bottom nav is at index 1 (Markets).
+                          // We can navigate by pushing a simple message.
+                        },
+                        child: Text(
+                          'See All on Map \u2192',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF84CC16),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  elevators.when(
+                    loading: () => const SizedBox(
+                      height: 60,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF10B981),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (elevatorList) {
+                      if (elevatorList.isEmpty) return const SizedBox.shrink();
+                      return Column(
+                        children: elevatorList
+                            .take(3)
+                            .map((e) => _NearbyElevatorCard(elevator: e))
+                            .toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ).animate().fade(duration: 400.ms, delay: 250.ms).slideY(begin: 0.05);
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildCommunityPulse(WidgetRef ref) {
     final trendingStats = ref.watch(trendingStatsProvider);
 
@@ -873,6 +970,92 @@ class _MetricCard extends StatelessWidget {
               color: Color(0xFF64748B),
               fontSize: 11,
               fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Nearby Elevator Card ---
+class _NearbyElevatorCard extends StatelessWidget {
+  final ElevatorLocation elevator;
+
+  const _NearbyElevatorCard({required this.elevator});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF334155).withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Company color dot
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: elevator.companyColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: elevator.companyColor.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Icon(
+              Icons.grain,
+              color: elevator.companyColor,
+              size: 14,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name + location
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  elevator.facilityName,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '${elevator.city}, ${elevator.province}',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF64748B),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Company badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: elevator.companyColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              elevator.company.length > 12
+                  ? '${elevator.company.substring(0, 12)}...'
+                  : elevator.company,
+              style: GoogleFonts.inter(
+                color: elevator.companyColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

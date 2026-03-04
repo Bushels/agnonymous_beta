@@ -9,6 +9,7 @@ import 'fertilizer_detail_screen.dart';
 import '../../widgets/market/category_card.dart';
 import 'crop_stats_tab.dart';
 import 'cash_prices_tab.dart';
+import '../map/elevator_map_screen.dart';
 
 /// Unified Markets screen with tab navigation.
 /// Combines Grains, Fertilizer, Cash Prices, and Crop Stats into one tabbed interface.
@@ -26,7 +27,7 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -100,6 +101,7 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
                     Tab(text: 'Fertilizer'),
                     Tab(text: 'Cash Prices'),
                     Tab(text: 'Crop Stats'),
+                    Tab(text: 'Map'),
                   ],
                 ),
               ),
@@ -120,6 +122,9 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
 
             // Crop Stats tab - Statistics Canada + USDA data
             const CropStatsTab(),
+
+            // Map tab - Interactive elevator map
+            const ElevatorMapScreen(),
           ],
         ),
       ),
