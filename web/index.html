@@ -12,12 +12,12 @@
     <!-- iOS meta tags & icons -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Agnonymous" />
     <link rel="apple-touch-icon" href="icons/Icon-192.png" />
 
-    <!-- Single favicon only -->
-    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="icons/agnonymous-mark.svg" />
+    <link rel="alternate icon" type="image/png" href="favicon.png" />
 
     <title>Agnonymous</title>
     <link rel="manifest" href="manifest.json" />
@@ -26,7 +26,11 @@
     <style>
       body {
         margin: 0;
-        background-color: #111827;
+        background: #fff7e8;
+        color: #17211a;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
       #loading-indicator {
         position: fixed;
@@ -38,45 +42,89 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        background-color: #111827;
+        gap: 18px;
+        background:
+          radial-gradient(circle at 50% 28%, rgba(233, 163, 24, 0.22), transparent 34%),
+          linear-gradient(180deg, #ffe9b8 0%, #fff7e8 48%, #eaf5d4 100%);
         z-index: 9999;
-        transition: opacity 0.3s ease-out;
+        transition: opacity 0.24s ease-out;
+      }
+      .loading-card {
+        width: min(82vw, 340px);
+        padding: 26px 22px 22px;
+        border: 1px solid #e6dec9;
+        border-radius: 30px;
+        background: rgba(255, 252, 245, 0.92);
+        box-shadow: 0 18px 44px rgba(60, 47, 22, 0.12);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .loading-logo-wrap {
+        width: 86px;
+        height: 86px;
+        border-radius: 24px;
+        background: #fff2d2;
+        border: 1px solid #e6dec9;
+        display: grid;
+        place-items: center;
+        margin-bottom: 16px;
+        animation: breathe 1.8s ease-in-out infinite;
       }
       .loading-logo {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 20px;
-        animation: pulse 1.5s ease-in-out infinite;
+        width: 62px;
+        height: 62px;
+      }
+      .loading-title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+      .loading-copy {
+        margin: 8px 0 18px;
+        color: #66715f;
+        font-size: 14px;
+        line-height: 1.35;
+        font-weight: 700;
       }
       .loading-bar-container {
-        width: 200px;
-        height: 4px;
-        background-color: rgba(74, 222, 128, 0.2);
-        border-radius: 2px;
+        width: 100%;
+        height: 8px;
+        background-color: #e6dec9;
+        border-radius: 999px;
         overflow: hidden;
       }
       .loading-bar {
-        width: 40%;
+        width: 42%;
         height: 100%;
-        background: linear-gradient(90deg, #4ade80, #22c55e);
-        border-radius: 2px;
-        animation: loadingSlide 1s ease-in-out infinite;
+        background: linear-gradient(90deg, #2f8c43, #e9a318, #e5533d);
+        border-radius: 999px;
+        animation: loadingSlide 1.15s ease-in-out infinite;
       }
-      @keyframes pulse {
-        0%, 100% { opacity: 0.7; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.05); }
+      @keyframes breathe {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-2px) scale(1.03); }
       }
       @keyframes loadingSlide {
         0% { transform: translateX(-100%); }
-        100% { transform: translateX(350%); }
+        100% { transform: translateX(250%); }
       }
     </style>
   </head>
   <body>
     <div id="loading-indicator">
-      <img src="icons/Icon-192.png" class="loading-logo" alt="Agnonymous" />
-      <div class="loading-bar-container">
-        <div class="loading-bar"></div>
+      <div class="loading-card" role="status" aria-live="polite">
+        <div class="loading-logo-wrap">
+          <img src="icons/agnonymous-mark.svg" class="loading-logo" alt="Agnonymous" />
+        </div>
+        <h1 class="loading-title">Agnonymous</h1>
+        <p class="loading-copy">Opening the anonymous board.</p>
+        <div class="loading-bar-container" aria-hidden="true">
+          <div class="loading-bar"></div>
+        </div>
       </div>
     </div>
 

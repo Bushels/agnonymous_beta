@@ -14,12 +14,6 @@ import 'package:agnonymous_beta/services/analytics_service.dart';
 import 'core/utils/globals.dart';
 import 'app/theme.dart';
 import 'app/navigation_shell.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/auth/signup_screen.dart';
-import 'screens/auth/reset_password_screen.dart';
-import 'screens/auth/verify_email_screen.dart';
-import 'screens/profile/profile_screen.dart';
-import 'screens/leaderboard/leaderboard_screen.dart';
 
 // --- RE-EXPORTS for backward compatibility ---
 export 'core/utils/globals.dart';
@@ -33,7 +27,7 @@ export 'features/community/widgets/post_card.dart' show PostCard;
 // --- MAIN APP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AnonymousIdService.getAnonymousId();
+  final anonymousId = await AnonymousIdService.getAnonymousId();
 
   // === STEP 1: Resolve Supabase credentials synchronously (no network calls) ===
   String? supabaseUrl;
@@ -62,9 +56,12 @@ Future<void> main() async {
     }
   }
 
-  if (supabaseUrl == null || supabaseUrl.isEmpty ||
-      supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
-    throw Exception('Supabase credentials not found. Please check environment variables or .env file.');
+  if (supabaseUrl == null ||
+      supabaseUrl.isEmpty ||
+      supabaseAnonKey == null ||
+      supabaseAnonKey.isEmpty) {
+    throw Exception(
+        'Supabase credentials not found. Please check environment variables or .env file.');
   }
 
   // === STEP 2: Initialize Firebase, Supabase, and MobileAds in PARALLEL ===
@@ -75,13 +72,17 @@ Future<void> main() async {
     futures.add(Firebase.initializeApp().then((_) {
       logger.i('Firebase initialized successfully');
     }).catchError((e) {
-      logger.w('Firebase initialization failed (may already be initialized in web): $e');
+      logger.w(
+          'Firebase initialization failed (may already be initialized in web): $e');
     }));
 
     // Supabase initialization
+    // Headers: x-anonymous-id is the server-side source of truth for the
+    // anonymous watch RPCs. See migration 20260424000100.
     futures.add(Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
+      headers: {'x-anonymous-id': anonymousId},
     ).then((_) {
       logger.i('Supabase initialized successfully');
     }));
@@ -105,10 +106,12 @@ Future<void> main() async {
   // === STEP 3: Set up Crashlytics AFTER Firebase is ready ===
   if (!kIsWeb) {
     try {
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
+      await FirebaseCrashlytics.instance
+          .setCrashlyticsCollectionEnabled(!kDebugMode);
 
       FlutterError.onError = (errorDetails) {
-        logger.e('Flutter error: ${errorDetails.exception}', error: errorDetails.exception, stackTrace: errorDetails.stack);
+        logger.e('Flutter error: ${errorDetails.exception}',
+            error: errorDetails.exception, stackTrace: errorDetails.stack);
         FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
       };
 
@@ -132,7 +135,7 @@ Future<void> main() async {
     if (session != null) {
       logger.d('Found existing session for user: ${session.user.id}');
     } else {
-      logger.d('No existing session - user will be directed to login screen');
+      logger.d('No existing session - continuing as anonymous board reader');
     }
 
     // Set up custom error widget for render errors
@@ -251,14 +254,6 @@ class AgnonymousApp extends StatelessWidget {
       theme: theme,
       debugShowCheckedModeBanner: false,
       home: const AuthWrapper(),
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignupScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/leaderboard': (context) => const LeaderboardScreen(),
-        '/reset-password': (context) => const ResetPasswordScreen(),
-        '/verify-email': (context) => const VerifyEmailScreen(),
-      },
       navigatorObservers: [
         AnalyticsService.instance.observer,
       ],

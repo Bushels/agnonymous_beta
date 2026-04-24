@@ -9,6 +9,17 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Legacy nested project copy (has its own .git) — kept only so history
+    # isn't lost. Never edited, and its contents still reference the
+    # pre-relaunch dashboard code. Excluding so it doesn't drown real signal.
+    - agnonymous_beta/**
+    # Disabled test suite — tests here were written against widgets that no
+    # longer exist (reputation_badge, notification_model, pricing_models).
+    # Renamed to _test/ as a parking lot; exclude from the analyzer too.
+    - _test/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

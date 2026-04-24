@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/globals.dart';
 import '../../../core/models/models.dart';
 import '../../../models/user_profile.dart' show TruthMeterStatus;
-import '../../../providers/auth_provider.dart';
 import '../../../services/anonymous_id_service.dart';
 import '../../../services/rate_limiter.dart';
-import '../../../widgets/luxury_post_card.dart';
-import '../../../widgets/truth_meter.dart' as truth_widget;
 import '../providers/community_providers.dart';
+import '../providers/watch_provider.dart';
+import 'board_post_card.dart';
+import 'board_truth_meter.dart';
 import 'comment_section.dart';
 
 // --- POST CARD ---
@@ -27,6 +27,33 @@ class _PostCardState extends ConsumerState<PostCard> {
   bool get _isOwner {
     final userId = supabase.auth.currentUser?.id;
     return userId != null && widget.post.userId == userId;
+  }
+
+  void _toggleComments() {
+    final willExpand = !_isCommentsExpanded;
+    setState(() => _isCommentsExpanded = willExpand);
+    if (willExpand) {
+      ref.read(watchedThreadsProvider.notifier).markSeen(widget.post);
+    }
+  }
+
+  Future<void> _toggleWatch() async {
+    final watches = ref.read(watchedThreadsProvider);
+    final wasWatching = watches.isWatching(widget.post.id);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    await ref.read(watchedThreadsProvider.notifier).toggle(widget.post);
+
+    if (!mounted) return;
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          wasWatching
+              ? 'Thread removed from your watch list'
+              : 'Watching this thread on this device',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   /// Show add to post dialog (append-only - cannot erase original content)
@@ -50,7 +77,8 @@ class _PostCardState extends ConsumerState<PostCard> {
             }
 
             // Append to original content with separator
-            final newContent = '${widget.post.content}\n\n---\n**Edit:** $sanitizedAddition';
+            final newContent =
+                '${widget.post.content}\n\n---\n**Edit:** $sanitizedAddition';
 
             // Call the edit_post RPC function
             await supabase.rpc('edit_post', params: {
@@ -61,9 +89,12 @@ class _PostCardState extends ConsumerState<PostCard> {
             });
 
             // Refresh posts to show updated content
-            final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+            final currentCategories =
+                ref.read(paginatedPostsProvider).categoryStates.keys.toList();
             for (final category in currentCategories) {
-              ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
+              ref
+                  .read(paginatedPostsProvider.notifier)
+                  .refreshCategory(category);
             }
 
             return true;
@@ -106,7 +137,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         ),
         title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red.shade400, size: 28),
+            Icon(Icons.warning_amber_rounded,
+                color: Colors.red.shade400, size: 28),
             const SizedBox(width: 12),
             const Text('Delete Post?', style: TextStyle(color: Colors.white)),
           ],
@@ -118,7 +150,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade400)),
+            child:
+                Text('Cancel', style: TextStyle(color: Colors.grey.shade400)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -150,7 +183,8 @@ class _PostCardState extends ConsumerState<PostCard> {
       });
 
       // Refresh posts to remove deleted post
-      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
@@ -194,7 +228,8 @@ class _PostCardState extends ConsumerState<PostCard> {
       });
 
       // Refresh posts to show restored post
-      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
@@ -219,17 +254,12 @@ class _PostCardState extends ConsumerState<PostCard> {
     }
   }
 
-  Future<void> _castVote(BuildContext context, WidgetRef ref, String voteType) async {
+  Future<void> _castVote(
+      BuildContext context, WidgetRef ref, String voteType) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
-      final userId = supabase.auth.currentUser?.id;
       final anonId = await AnonymousIdService.getAnonymousId();
-
-      // Prevent self-voting (if owner is known and logged in)
-      if (userId != null && widget.post.userId == userId) {
-        throw 'You cannot vote on your own posts.';
-      }
 
       // Check client-side rate limiting
       final rateLimiter = RateLimiter();
@@ -242,8 +272,8 @@ class _PostCardState extends ConsumerState<PostCard> {
       try {
         await supabase.rpc('cast_user_vote', params: {
           'post_id_in': widget.post.id,
-          'user_id_in': userId, // Can be null for anonymous users
-          'anonymous_user_id_in': anonId, // Required for anonymous voting
+          'user_id_in': null,
+          'anonymous_user_id_in': anonId,
           'vote_type_in': voteType,
         });
       } catch (rpcError) {
@@ -254,8 +284,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         await supabase.from('truth_votes').upsert(
           {
             'post_id': widget.post.id,
-            'anonymous_user_id': anonId, // Required for uniqueness constraint
-            'user_id': userId, // Can be null
+            'anonymous_user_id': anonId,
             'vote_type': voteType,
             'is_anonymous': true,
           },
@@ -267,17 +296,18 @@ class _PostCardState extends ConsumerState<PostCard> {
       rateLimiter.recordVote(widget.post.id);
 
       // Refresh categories to pick up the vote count change
-      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
 
       final voteEmoji = {
-        'thumbs_up': '\u{1F44D}',
-        'partial': '\u{1F914}',
-        'thumbs_down': '\u{1F44E}',
-        'funny': '\u{1F602}',
-      }[voteType] ?? '';
+            'thumbs_up': '\u{1F44D}',
+            'partial': '\u{1F914}',
+            'thumbs_down': '\u{1F44E}',
+          }[voteType] ??
+          '';
 
       scaffoldMessenger.showSnackBar(
         SnackBar(
@@ -295,23 +325,32 @@ class _PostCardState extends ConsumerState<PostCard> {
       } else if (errorStr.contains('own posts')) {
         errorMessage = 'You cannot vote on your own posts.';
       } else if (errorStr.contains('Access Denied')) {
-        errorMessage = 'Access Denied: ${errorStr.split('Access Denied:').last.trim()}';
-      } else if (errorStr.contains('unique_user_post_vote') || errorStr.contains('duplicate key')) {
+        errorMessage =
+            'Access Denied: ${errorStr.split('Access Denied:').last.trim()}';
+      } else if (errorStr.contains('unique_user_post_vote') ||
+          errorStr.contains('duplicate key')) {
         // Vote already exists - this shouldn't happen with upsert but handle it
         errorMessage = 'Vote updated!';
       } else {
-         // Clean up Postgres error messages
-         errorMessage = errorStr.replaceAll('PostgrestException(message:', '').replaceAll('details:', '').trim();
-         if (errorMessage.length > 100) errorMessage = 'Error casting vote. Please try again.';
+        // Clean up Postgres error messages
+        errorMessage = errorStr
+            .replaceAll('PostgrestException(message:', '')
+            .replaceAll('details:', '')
+            .trim();
+        if (errorMessage.length > 100) {
+          errorMessage = 'Error casting vote. Please try again.';
+        }
       }
 
       final isError = !errorMessage.contains('updated');
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(errorMessage),
-          backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+          backgroundColor:
+              isError ? Colors.red.shade700 : Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
@@ -320,9 +359,11 @@ class _PostCardState extends ConsumerState<PostCard> {
   @override
   Widget build(BuildContext context) {
     final voteStatsAsync = ref.watch(voteStatsProvider(widget.post.id));
-    final isAuthenticated = ref.watch(isAuthenticatedProvider);
+    final watchedState = ref.watch(watchedThreadsProvider);
+    final isWatched = watchedState.isWatching(widget.post.id);
+    final newCommentCount = watchedState.unreadFor(widget.post);
 
-    return LuxuryPostCard(
+    return BoardPostCard(
       title: widget.post.title,
       content: widget.post.content,
       category: widget.post.category,
@@ -333,10 +374,11 @@ class _PostCardState extends ConsumerState<PostCard> {
       isAnonymous: widget.post.isAnonymous,
       commentCount: widget.post.commentCount,
       imageUrl: widget.post.imageUrl,
-      funnyCount: voteStatsAsync.value?.funnyVotes ?? 0,
       isCommentsExpanded: _isCommentsExpanded,
-      onToggleComments: () => setState(() => _isCommentsExpanded = !_isCommentsExpanded),
-      onFunnyVote: () => _castVote(context, ref, 'funny'),
+      isWatched: isWatched,
+      newCommentCount: newCommentCount,
+      onToggleComments: _toggleComments,
+      onToggleWatch: _toggleWatch,
       truthMeterWidget: voteStatsAsync.when(
         loading: () => const Center(
           child: Padding(
@@ -347,52 +389,55 @@ class _PostCardState extends ConsumerState<PostCard> {
         error: (err, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Text('Error loading votes: $err', style: const TextStyle(color: Colors.red)),
+            child: Text('Error loading votes: $err',
+                style: const TextStyle(color: Colors.red)),
           ),
         ),
         data: (stats) {
-          // Calculate truth score
-          final positiveVotes = stats.thumbsUpVotes * 2 + stats.partialVotes;
-          final negativeVotes = stats.thumbsDownVotes * 2;
-          final totalWeighted = positiveVotes + negativeVotes;
-          final truthScore = totalWeighted > 0
-              ? (positiveVotes / totalWeighted * 100).clamp(0.0, 100.0)
+          final directionalVotes = stats.thumbsUpVotes + stats.thumbsDownVotes;
+          final truthScore = directionalVotes > 0
+              ? (stats.thumbsUpVotes / directionalVotes * 100).clamp(0.0, 100.0)
               : 50.0;
+          final boardSignal =
+              stats.thumbsUpVotes + stats.partialVotes + stats.thumbsDownVotes;
 
-          // Determine status based on score
           TruthMeterStatus status;
-          if (stats.totalVotes == 0) {
+          if (boardSignal == 0) {
             status = TruthMeterStatus.unrated;
+          } else if (directionalVotes == 0) {
+            status = TruthMeterStatus.questionable;
           } else if (truthScore >= 70) {
             status = TruthMeterStatus.verifiedCommunity;
+          } else if (truthScore >= 55) {
+            status = TruthMeterStatus.likelyTrue;
           } else if (truthScore >= 40) {
+            status = TruthMeterStatus.partiallyTrue;
+          } else if (truthScore >= 30) {
             status = TruthMeterStatus.questionable;
           } else {
             status = TruthMeterStatus.rumour;
           }
 
-          return truth_widget.TruthMeter(
+          return BoardTruthMeter(
             status: status,
             score: truthScore,
-            voteCount: stats.totalVotes,
             thumbsUp: stats.thumbsUpVotes,
             thumbsDown: stats.thumbsDownVotes,
-            partial: stats.partialVotes,
-            funny: stats.funnyVotes,
-            compact: false,
-            showVoteBreakdown: true, // Always show to allow voting
+            neutral: stats.partialVotes,
             onVote: (voteType) => _castVote(context, ref, voteType),
           );
         },
       ),
-      commentsWidget: CommentSection(postId: widget.post.id),
+      commentsWidget: CommentSection(post: widget.post),
       showSignInPrompt: false,
       // Edit/Delete support (edit = append only, delete = 5 second window)
       isOwner: _isOwner,
       wasEdited: widget.post.wasEdited,
       onEdit: _isOwner ? () => _showAddToPostDialog(context) : null,
       // Only allow deletion within 5 seconds of post creation
-      onDelete: _isOwner && _canDeletePost() ? () => _showDeleteConfirmation(context) : null,
+      onDelete: _isOwner && _canDeletePost()
+          ? () => _showDeleteConfirmation(context)
+          : null,
     );
   }
 
@@ -481,7 +526,8 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.orange.shade300, size: 20),
+                  Icon(Icons.info_outline,
+                      color: Colors.orange.shade300, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -563,7 +609,8 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _isSaving ? null : () => Navigator.pop(context, false),
+                  onPressed:
+                      _isSaving ? null : () => Navigator.pop(context, false),
                   child: Text(
                     'Cancel',
                     style: TextStyle(color: Colors.grey.shade400),
@@ -574,7 +621,8 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF84CC16),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

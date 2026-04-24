@@ -65,7 +65,7 @@ class PaginatedPostsState {
 
 // Notifier for Category-specific Pagination Logic
 class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
-  final int _pageSize = 50;  // 50 posts per category for better coverage
+  final int _pageSize = 50; // 50 posts per category for better coverage
   RealtimeChannel? _postsChannel;
 
   @override
@@ -85,25 +85,27 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
     return const PaginatedPostsState();
   }
 
-  Future<void> loadPostsForCategory(String category, {bool isInitial = false, bool isRefresh = false}) async {
+  Future<void> loadPostsForCategory(String category,
+      {bool isInitial = false, bool isRefresh = false}) async {
     final categoryState = state.getCategoryState(category);
 
-    if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh)) return;
+    if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh))
+      return;
 
     final pageToLoad = isRefresh || isInitial ? 0 : categoryState.currentPage;
 
     // Update this category's loading state
-    final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
-    updatedCategoryStates[category] = categoryState.copyWith(isLoading: true, error: null);
+    final updatedCategoryStates =
+        Map<String, CategoryPostsState>.from(state.categoryStates);
+    updatedCategoryStates[category] =
+        categoryState.copyWith(isLoading: true, error: null);
     state = state.copyWith(categoryStates: updatedCategoryStates);
 
     try {
       logger.d('Fetching posts for category: $category, page: $pageToLoad');
 
-      var query = supabase
-          .from('posts')
-          .select('*')
-          .neq('is_deleted', true); // Filter out deleted posts (handles null as non-deleted)
+      var query = supabase.from('posts').select('*').neq('is_deleted',
+          true); // Filter out deleted posts (handles null as non-deleted)
 
       // Apply category filter for specific categories, skip for "all"
       if (category != 'all') {
@@ -119,19 +121,23 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
           .where((post) => !post.isDeleted) // Double-check filter in Dart
           .toList();
 
-      logger.d('Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
+      logger.d(
+          'Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
 
       final List<Post> updatedPosts;
       if (isRefresh) {
         // On refresh, merge new posts with old, prioritizing new ones to show updates.
         final newPostsMap = {for (var p in newPosts) p.id: p};
-        final oldPostsFiltered = categoryState.posts.where((p) => !newPostsMap.containsKey(p.id));
+        final oldPostsFiltered =
+            categoryState.posts.where((p) => !newPostsMap.containsKey(p.id));
         updatedPosts = [...newPosts, ...oldPostsFiltered];
-        updatedPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Ensure order is correct
+        updatedPosts.sort((a, b) =>
+            b.createdAt.compareTo(a.createdAt)); // Ensure order is correct
       } else {
         // For initial load or load more, just add new posts that aren't already there.
         final existingIds = categoryState.posts.map((p) => p.id).toSet();
-        final filteredNewPosts = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+        final filteredNewPosts =
+            newPosts.where((p) => !existingIds.contains(p.id)).toList();
         updatedPosts = isInitial
             ? filteredNewPosts
             : [...categoryState.posts, ...filteredNewPosts];
@@ -144,21 +150,27 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         currentPage: pageToLoad + 1,
       );
 
-      final finalCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+      final finalCategoryStates =
+          Map<String, CategoryPostsState>.from(state.categoryStates);
       finalCategoryStates[category] = newCategoryState;
       state = state.copyWith(categoryStates: finalCategoryStates);
 
-      logger.d('Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
+      logger.d(
+          'Updated state: ${newCategoryState.posts.length} posts, hasMore: ${newCategoryState.hasMore}');
     } catch (e, stackTrace) {
-      logger.e('Error loading posts for category $category', error: e, stackTrace: stackTrace);
-      final errorCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
-      errorCategoryStates[category] = categoryState.copyWith(isLoading: false, error: e.toString());
+      logger.e('Error loading posts for category $category',
+          error: e, stackTrace: stackTrace);
+      final errorCategoryStates =
+          Map<String, CategoryPostsState>.from(state.categoryStates);
+      errorCategoryStates[category] =
+          categoryState.copyWith(isLoading: false, error: e.toString());
       state = state.copyWith(categoryStates: errorCategoryStates);
     }
   }
 
   void loadMoreForCategory(String category) => loadPostsForCategory(category);
-  Future<void> refreshCategory(String category) => loadPostsForCategory(category, isRefresh: true);
+  Future<void> refreshCategory(String category) =>
+      loadPostsForCategory(category, isRefresh: true);
 
   // Method to ensure category is loaded
   void ensureCategoryLoaded(String category) {
@@ -171,7 +183,9 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
       final categoryState = state.getCategoryState(category);
 
       // If we have no posts and not loading, try to reload
-      if (categoryState.posts.isEmpty && !categoryState.isLoading && categoryState.error == null) {
+      if (categoryState.posts.isEmpty &&
+          !categoryState.isLoading &&
+          categoryState.error == null) {
         logger.d('Category is empty and not loading, reloading: $category');
         loadPostsForCategory(category, isInitial: true);
       }
@@ -206,37 +220,43 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
             logger.d('Updating post ${updatedPost.id}');
 
             // Update the post in all loaded category states where it exists
-            final updatedCategoryStates = Map<String, CategoryPostsState>.from(state.categoryStates);
+            final updatedCategoryStates =
+                Map<String, CategoryPostsState>.from(state.categoryStates);
             for (final entry in updatedCategoryStates.entries) {
               final cat = entry.key;
               final catState = entry.value;
-              final postIndex = catState.posts.indexWhere((p) => p.id == updatedPost.id);
+              final postIndex =
+                  catState.posts.indexWhere((p) => p.id == updatedPost.id);
               if (postIndex != -1) {
                 final updatedPosts = List<Post>.from(catState.posts);
-                updatedPosts[postIndex] = updatedPost;  // Replace with updated post
-                updatedCategoryStates[cat] = catState.copyWith(posts: updatedPosts);
+                updatedPosts[postIndex] =
+                    updatedPost; // Replace with updated post
+                updatedCategoryStates[cat] =
+                    catState.copyWith(posts: updatedPosts);
                 logger.d('Updated post in category "$cat"');
               }
             }
             state = state.copyWith(categoryStates: updatedCategoryStates);
-                    },
+          },
         )
         .subscribe();
   }
-
 }
 
 // --- RIVERPOD PROVIDERS ---
 // Provider Declaration
-final paginatedPostsProvider = NotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>(
+final paginatedPostsProvider =
+    NotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>(
   PaginatedPostsNotifier.new,
 );
 
 /// Sort mode for the post feed
-enum FeedSortMode { recent, topFunny }
+enum FeedSortMode { recent, active }
 
 /// Provider for current feed sort mode
-final feedSortModeProvider = NotifierProvider<FeedSortModeNotifier, FeedSortMode>(FeedSortModeNotifier.new);
+final feedSortModeProvider =
+    NotifierProvider<FeedSortModeNotifier, FeedSortMode>(
+        FeedSortModeNotifier.new);
 
 class FeedSortModeNotifier extends Notifier<FeedSortMode> {
   @override
@@ -254,7 +274,8 @@ final postsProvider = StreamProvider<List<Post>>((ref) {
   return Stream.value(allPosts);
 });
 
-final commentsProvider = StreamProvider.family<List<Comment>, String>((ref, postId) {
+final commentsProvider =
+    StreamProvider.family<List<Comment>, String>((ref, postId) {
   final stream = supabase
       .from('comments')
       .stream(primaryKey: ['id'])
@@ -269,12 +290,14 @@ final commentsProvider = StreamProvider.family<List<Comment>, String>((ref, post
   });
 });
 
-final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId) {
+final voteStatsProvider =
+    StreamProvider.family<VoteStats, String>((ref, postId) {
   final controller = StreamController<VoteStats>();
 
   Future<void> fetchStats() async {
     try {
-      final response = await supabase.rpc('get_post_vote_stats', params: {'post_id_in': postId});
+      final response = await supabase
+          .rpc('get_post_vote_stats', params: {'post_id_in': postId});
       Map<String, dynamic> dataMap = {};
       if (response is List && response.isNotEmpty) {
         dataMap = response[0] as Map<String, dynamic>;
@@ -286,7 +309,11 @@ final voteStatsProvider = StreamProvider.family<VoteStats, String>((ref, postId)
       if (const bool.fromEnvironment('dart.vm.product') == false) {
         debugPrint('Error fetching vote stats: $e');
       }
-      controller.add(VoteStats(thumbsUpVotes: 0, partialVotes: 0, thumbsDownVotes: 0, funnyVotes: 0));
+      controller.add(VoteStats(
+          thumbsUpVotes: 0,
+          partialVotes: 0,
+          thumbsDownVotes: 0,
+          funnyVotes: 0));
     }
   }
 
@@ -330,11 +357,13 @@ final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
         dataMap = response;
       }
       final stats = GlobalStats.fromMap(dataMap);
-      logger.d('Global Stats - Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
+      logger.d(
+          'Global Stats - Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
       controller.add(stats);
     } catch (e) {
       logger.w('Error fetching global stats: $e');
-      controller.add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
+      controller
+          .add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
     }
   }
 

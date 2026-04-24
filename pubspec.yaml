@@ -71,4 +71,3 @@ flutter:
   assets:
     - .env
     - assets/images/
-    - assets/grain_data.sqlite

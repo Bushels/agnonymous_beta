@@ -3,9 +3,9 @@
     "short_name": "Agnonymous",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#111827",
-    "theme_color": "#84CC16",
-    "description": "Anonymous agricultural transparency platform - Share farming experiences and vote on community content",
+    "background_color": "#FFF7E8",
+    "theme_color": "#E5533D",
+    "description": "Anonymous agriculture posting board",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

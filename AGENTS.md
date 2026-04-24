@@ -1,8 +1,8 @@
-# Agnonymous Beta - Claude Code Project Context
+# Agnonymous Beta - Codex Project Context
 
 ## April 2026 Relaunch Override
 
-This section is the current source of truth and overrides older dashboard, market-intelligence, input-pricing, and gamification plans in this repo. Everything below this block is legacy context.
+This section is the current source of truth and overrides older dashboard, market-intelligence, input-pricing, and gamification plans in this repo.
 
 Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
 
@@ -15,39 +15,37 @@ Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
 - Funny reactions are removed from the UI.
 - Market intelligence, fertilizer/input pricing, marketplace pricing, My Farm, My Bins, elevator maps, and commodity dashboards are out of v1.
 
-**Read first for current work:**
+Read first for current work:
 
 | Document | Purpose |
 |----------|---------|
 | [PRODUCT_VISION.md](PRODUCT_VISION.md) | Current anonymous-board product vision |
 | [docs/plans/2026-04-23-anonymous-board-relaunch.md](docs/plans/2026-04-23-anonymous-board-relaunch.md) | Relaunch status, decisions, audit checklist |
-| [AGENTS.md](AGENTS.md) | Mirror of this file for Codex sessions (keep synchronized) |
 
-Legacy documents below remain useful only for historical context. **Do not use them to justify adding pricing, dashboards, sign-in, or market intelligence back into v1.**
+Legacy documents below remain useful only for historical context. Do not use them to justify adding pricing, dashboards, sign-in, or market intelligence back into v1.
 
----
-
-## Legacy Quick Links (historical context only)
+## Quick Links
 
 | Document | Purpose |
 |----------|---------|
+| [PRODUCT_VISION.md](PRODUCT_VISION.md) | Complete product vision and feature specifications |
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | Tech stack, database schema, API design |
-| [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | Phase-by-phase implementation plan (pre-relaunch) |
-| [INPUT_PRICING_SYSTEM.md](INPUT_PRICING_SYSTEM.md) | Fertilizer/chemical/seed pricing feature (out of v1) |
-| [GAMIFICATION_SYSTEM.md](GAMIFICATION_SYSTEM.md) | Point system and reputation design (out of v1) |
+| [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | Phase-by-phase implementation plan |
+| [INPUT_PRICING_SYSTEM.md](INPUT_PRICING_SYSTEM.md) | Fertilizer/chemical/seed pricing feature |
+| [GAMIFICATION_SYSTEM.md](GAMIFICATION_SYSTEM.md) | Point system and reputation design |
 | | |
-| **Strategy Documents (March 2026 — superseded)** | |
-| [AGRICULTURAL_WORLDVIEW.md](AGRICULTURAL_WORLDVIEW.md) | Farmer philosophy, trust principles, platform values |
-| [STRATEGIC_BLUEPRINT.md](STRATEGIC_BLUEPRINT.md) | Flutter architecture, file restructure plan |
-| [DATA_SOURCE_ARCHITECTURE.md](DATA_SOURCE_ARCHITECTURE.md) | 15 data sources, build waves, Mapbox plan (out of v1) |
-| [FARMER_TARGETS_FEATURE.md](FARMER_TARGETS_FEATURE.md) | "My Farm" (out of v1) |
-| [CONTEXTUAL_CHAT_AND_INVENTORY.md](CONTEXTUAL_CHAT_AND_INVENTORY.md) | Contextual chat rooms, "My Bins" (out of v1) |
-| [AGENT_HIERARCHY.md](AGENT_HIERARCHY.md) | 19-agent 3-tier hierarchy |
-| [AGENT_STRATEGY.md](AGENT_STRATEGY.md) | Original agent strategy (superseded) |
+| **Strategy Documents (March 2026)** | |
+| [AGRICULTURAL_WORLDVIEW.md](AGRICULTURAL_WORLDVIEW.md) | **READ FIRST** — Farmer philosophy, trust principles, platform values |
+| [STRATEGIC_BLUEPRINT.md](STRATEGIC_BLUEPRINT.md) | Flutter architecture, file restructure plan, tool comparison |
+| [DATA_SOURCE_ARCHITECTURE.md](DATA_SOURCE_ARCHITECTURE.md) | 15 data sources, build waves, Mapbox plan |
+| [FARMER_TARGETS_FEATURE.md](FARMER_TARGETS_FEATURE.md) | "My Farm" — cost/yield/breakeven, provincial defaults |
+| [CONTEXTUAL_CHAT_AND_INVENTORY.md](CONTEXTUAL_CHAT_AND_INVENTORY.md) | Contextual chat rooms, "My Bins" inventory, publish-to-elevator |
+| [AGENT_HIERARCHY.md](AGENT_HIERARCHY.md) | 19-agent 3-tier hierarchy, communication protocol |
+| [AGENT_STRATEGY.md](AGENT_STRATEGY.md) | Original agent strategy (superseded by AGENT_HIERARCHY) |
 | | |
-| **Wave 2 (March 2026 — out of v1)** | |
-| [WAVE2_IMPLEMENTATION.md](WAVE2_IMPLEMENTATION.md) | PDQ, My Farm, Elevator Map, Farmer Reporting |
-| [WAVE2_ADVICE.md](WAVE2_ADVICE.md) | Wave 2 session prompting tips |
+| **Wave 2 (March 2026)** | |
+| [WAVE2_IMPLEMENTATION.md](WAVE2_IMPLEMENTATION.md) | Complete Wave 2 roadmap — PDQ, My Farm, Elevator Map, Farmer Reporting |
+| [WAVE2_ADVICE.md](WAVE2_ADVICE.md) | High-level advice, gotchas, and session prompting tips for Wave 2 |
 
 ---
 
@@ -182,12 +180,8 @@ Features:
 
 ```
 lib/
-├── main.dart                           # App entry point (~260 lines)
+├── main.dart                           # App entry, theme, navigation shell, Post/Comment models
 ├── create_post_screen.dart             # Post creation
-│
-├── core/
-│   ├── models/                         # Post, Comment, VoteStats, CommunityStats
-│   └── utils/                          # helpers.dart (sanitizeInput), globals.dart (logger)
 │
 ├── models/
 │   ├── user_profile.dart               # User profile + reputation logic
@@ -253,7 +247,7 @@ supabase/
 │   ├── 20260221120000_crop_stats_usda.sql  # Crop stats + USDA tables
 │   └── ...
 │
-.claude/agents/                          # 15 Claude Code agents
+.Codex/agents/                          # 15 Codex agents
 ├── vision-agent.md                      # Feature ideation
 ├── improvement-agent.md                 # Site optimization
 ├── innovation-agent.md                  # Tech trend research
@@ -341,7 +335,7 @@ supabase/
 | CGC data pipeline | Complete | Edge Function + pg_cron, weekly auto-fetch |
 | Supabase grain providers | Complete | Replaces bundled SQLite |
 | fl_chart visualizations | Complete | LineChart, BarChart, MetricCard, InsightCard |
-| Agent swarm (9 agents) | Complete | .claude/agents/ definitions |
+| Agent swarm (9 agents) | Complete | .Codex/agents/ definitions |
 | SmartAdBanner | Complete | Unified AdSense (web) / AdMob (mobile) |
 | StatsCan integration | Complete | Edge Function + crop_stats table, monthly fetch |
 | USDA QuickStats | Complete | Edge Function + crop_stats table, weekly fetch |
@@ -449,21 +443,31 @@ flutter test
 ### Test Structure
 ```
 test/
-├── core/
-│   ├── models/                   # post, comment, vote_stats, community_stats
-│   └── utils/                    # globals
-└── providers/                    # cot_positions, futures_provider
+├── widget_test.dart              # Smoke tests
+├── models/
+│   ├── user_profile_test.dart    # UserProfile, ReputationLevelInfo, TruthMeterStatus
+│   ├── pricing_models_test.dart  # Product, Retailer, PriceEntry, PriceStats, PriceAlert
+│   └── notification_model_test.dart  # UserNotification, NotificationType
+├── providers/
+│   └── auth_state_test.dart      # AuthState class tests
+├── utils/
+│   └── sanitize_input_test.dart  # Input sanitization tests
+└── widgets/
+    ├── glass_container_test.dart # GlassContainer, FrostedCard, GlassTextField, etc.
+    └── reputation_badge_test.dart # ReputationBadge, ReputationProgress, ReputationStatsCard
 ```
 
 ### Test Categories
 - Unit: Model parsing, point calculations, state management
-- Widget: UI component rendering, user interactions (currently none — see gap below)
-- Integration: Full user flows — not yet wired (`patrol` available in pubspec)
+- Widget: UI component rendering, user interactions
+- Integration: Full user flows (requires Firebase/Supabase setup)
 
-### Current Coverage (Audit — April 2026)
-- **7 test files** remaining under `test/` (down from ~15 — auth, pricing, sanitize, widget, notification, rate-limiter, reputation-badge tests were deleted without replacements)
-- Coverage gap: no tests for `sanitizeInput()`, rate limiter, auth state, glass widgets, reputation badge — rebuild before next release
-- No integration tests exist (`integration_test/` is empty)
+### Current Coverage
+- **142+ tests** passing (models, services, widgets, utils)
+- Models: ~90% coverage (user_profile, pricing_models, notification_model)
+- Services: rate_limiter fully tested
+- Widgets: Key components tested (glass_container, reputation_badge)
+- Utils: sanitizeInput fully covered
 
 ---
 
@@ -487,14 +491,14 @@ Environment variables via Flutter build args or Firebase config.
 - Data foundation (Supabase grain_data_live, Edge Functions, providers)
 - 5-tab navigation (Dashboard, Markets, +Post, Community, Profile)
 - Data visualization (fl_chart charts, MetricCard, InsightCard)
-- Agent swarm (9 Claude Code agents) + ad integration (SmartAdBanner)
+- Agent swarm (9 Codex agents) + ad integration (SmartAdBanner)
 - Statistics Canada + USDA NASS data pipelines, crop_stats table, Crop Stats tab
 
 ### Phase 6: Polish & Optimization (NEXT)
+- Extract Post/Comment models from main.dart into dedicated files
 - Offline cache service for Supabase data
 - Admin analytics dashboard
 - Push notifications via FCM
-- Rebuild deleted test coverage (sanitizeInput, rate_limiter, auth_state, glass widgets)
 
 ---
 
@@ -582,7 +586,7 @@ See [DATA_SOURCE_ARCHITECTURE.md](DATA_SOURCE_ARCHITECTURE.md) for full build wa
 - Canola thesis deep-dive dashboard (enhanced CGC visualization)
 - CFTC COT data pipeline (weekly CSV, trader positioning)
 - ICE canola futures connection
-- ~~File restructure: Extract Post/Comment models from main.dart~~ (Done — models in `lib/core/models/`)
+- File restructure: Extract Post/Comment models from main.dart
 
 ### Wave 2: Local Price Intelligence
 - Mapbox elevator map (CGC GEICO locations)
@@ -609,7 +613,7 @@ See [DATA_SOURCE_ARCHITECTURE.md](DATA_SOURCE_ARCHITECTURE.md) for full build wa
 
 ---
 
-## Claude Code Agent Hierarchy (19 Agents, 3 Tiers)
+## Codex Agent Hierarchy (19 Agents, 3 Tiers)
 
 **Full spec:** [AGENT_HIERARCHY.md](AGENT_HIERARCHY.md)
 
@@ -640,15 +644,15 @@ See [DATA_SOURCE_ARCHITECTURE.md](DATA_SOURCE_ARCHITECTURE.md) for full build wa
 | `map-intelligence` | Data | Mapbox, elevator markers, geo-queries, offline tiles |
 | `debugger` | Ops | Bug fixing, `flutter analyze`, crash analysis |
 | `security-agent` | Ops | RLS audits, auth, anonymization, privacy |
-| `memory-docs` | Ops | Documentation currency, .claude/memory/ cleanup, weekly reports |
+| `memory-docs` | Ops | Documentation currency, .Codex/memory/ cleanup, weekly reports |
 | `innovation-scout` | Ops | Flutter packages, ag-tech trends, competitor monitoring |
 | `agent-ops` | Ops | Agent effectiveness grading, upgrade recommendations |
 
 ### Agent Communication
-Agents communicate via status files in `.claude/memory/`. See AGENT_HIERARCHY.md for the full communication protocol, review gates, and workflow patterns.
+Agents communicate via status files in `.Codex/memory/`. See AGENT_HIERARCHY.md for the full communication protocol, review gates, and workflow patterns.
 
 ### Shared Context Files
-Reference data in `.claude/context/`:
+Reference data in `.Codex/context/`:
 - `data-dictionary.md` — All database tables, columns, types
 - `design-tokens.md` — Colors, typography, spacing, glassmorphism specs
 - `api-contracts.md` — RPC signatures, Edge Function interfaces, provider contracts

@@ -2,19 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
+import '../../../core/models/post.dart';
 import '../../../core/utils/globals.dart';
 import '../../../app/theme.dart';
 import '../../../services/anonymous_id_service.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/rate_limiter.dart';
-import '../../../providers/auth_provider.dart';
+import '../board_theme.dart';
 import '../providers/community_providers.dart';
+import '../providers/watch_provider.dart';
 
-// --- COMMENT SECTION ---
-// Note: Comments cannot be edited or deleted to preserve transparency and reputation integrity
 class CommentSection extends ConsumerStatefulWidget {
-  final String postId;
-  const CommentSection({super.key, required this.postId});
+  final Post post;
+
+  const CommentSection({super.key, required this.post});
 
   @override
   ConsumerState<CommentSection> createState() => _CommentSectionState();
@@ -23,7 +24,6 @@ class CommentSection extends ConsumerStatefulWidget {
 class _CommentSectionState extends ConsumerState<CommentSection> {
   final _commentController = TextEditingController();
   bool _isPostingComment = false;
-  bool _commentAsAnonymous = true;
 
   @override
   void dispose() {
@@ -31,14 +31,10 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     super.dispose();
   }
 
-  // Note: Comments cannot be edited or deleted to preserve transparency
-  // and reputation integrity. Users must think carefully before commenting.
-
   Future<void> _postComment() async {
     final content = _commentController.text.trim();
     if (content.isEmpty) return;
 
-    // Check client-side rate limiting for comments
     final commentRateLimiter = CommentRateLimiter();
     final rateLimitError = commentRateLimiter.canComment();
     if (rateLimitError != null) {
@@ -56,58 +52,33 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     setState(() => _isPostingComment = true);
 
     try {
-      final userId = supabase.auth.currentUser?.id;
-      final anonId = await AnonymousIdService.getAnonymousId();
-
-      // Sanitize comment content to prevent XSS attacks
       final sanitizedContent = sanitizeInput(content);
       if (sanitizedContent.isEmpty) {
         throw 'Invalid comment content';
       }
 
-      // Get user profile for author info if not anonymous
-      final authState = ref.read(authProvider);
-      final userProfile = authState.profile;
-
-      final commentData = <String, dynamic>{
-        'post_id': widget.postId,
-        'user_id': userId,
-        'anonymous_user_id': anonId,
+      await supabase.from('comments').insert({
+        'post_id': widget.post.id,
+        'anonymous_user_id': await AnonymousIdService.getAnonymousId(),
         'content': sanitizedContent,
-        'is_anonymous': _commentAsAnonymous,
-      };
+        'is_anonymous': true,
+      });
 
-      // Add author info if not posting anonymously
-      if (!_commentAsAnonymous && userProfile != null) {
-        commentData['author_username'] = userProfile.username;
-        commentData['author_verified'] = userProfile.emailVerified;
-      }
+      await ref.read(watchedThreadsProvider.notifier).watchDetails(
+            postId: widget.post.id,
+            title: widget.post.title,
+            category: widget.post.category,
+            lastSeenCommentCount: widget.post.commentCount + 1,
+          );
 
-      // Insert comment
-      await supabase.from('comments').insert(commentData);
-
-      // Track comment analytics
       AnalyticsService.instance.logCommentPosted();
-
-      // Record successful comment for rate limiting
       commentRateLimiter.recordComment();
-
       _commentController.clear();
 
-      // Force refresh categories to pick up the updated comment count
-      final currentCategories = ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Comment posted!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
@@ -125,213 +96,94 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     }
   }
 
-  Widget _buildCommentIdentityToggle() {
-    final authState = ref.watch(authProvider);
-    final userProfile = authState.profile;
-    final isLoggedIn = userProfile != null;
-    final username = userProfile?.username ?? 'Unknown';
-    final isVerified = userProfile?.emailVerified ?? false;
-
-    return Row(
-      children: [
-        Text(
-          'Comment as: ',
-          style: TextStyle(
-            color: Colors.grey.shade500,
-            fontSize: 12,
-          ),
-        ),
-        // Anonymous chip
-        GestureDetector(
-          onTap: () => setState(() => _commentAsAnonymous = true),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: _commentAsAnonymous
-                  ? theme.colorScheme.primary.withOpacity(0.2)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _commentAsAnonymous
-                    ? theme.colorScheme.primary
-                    : Colors.grey.withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.masks,
-                  size: 14,
-                  color: _commentAsAnonymous
-                      ? theme.colorScheme.primary
-                      : Colors.grey.shade500,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'Anonymous',
-                  style: TextStyle(
-                    color: _commentAsAnonymous
-                        ? theme.colorScheme.primary
-                        : Colors.grey.shade500,
-                    fontSize: 12,
-                    fontWeight: _commentAsAnonymous
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Username chip (only if logged in with profile)
-        if (isLoggedIn)
-          GestureDetector(
-            onTap: () => setState(() => _commentAsAnonymous = false),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: !_commentAsAnonymous
-                    ? theme.colorScheme.primary.withOpacity(0.2)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: !_commentAsAnonymous
-                      ? theme.colorScheme.primary
-                      : Colors.grey.withOpacity(0.3),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isVerified ? Icons.verified : Icons.person,
-                    size: 14,
-                    color: !_commentAsAnonymous
-                        ? (isVerified ? Colors.blue : theme.colorScheme.primary)
-                        : Colors.grey.shade500,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '@$username',
-                    style: TextStyle(
-                      color: !_commentAsAnonymous
-                          ? theme.colorScheme.primary
-                          : Colors.grey.shade500,
-                      fontSize: 12,
-                      fontWeight: !_commentAsAnonymous
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final commentsAsync = ref.watch(commentsProvider(widget.postId));
+    final commentsAsync = ref.watch(commentsProvider(widget.post.id));
 
     return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           commentsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Text('Error loading comments: $err'),
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(14),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            error: (err, stack) => Text(
+              'Error loading comments: $err',
+              style: const TextStyle(color: BoardColors.monette),
+            ),
             data: (comments) {
               if (comments.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
                   child: Center(
                     child: Text(
-                      'No comments yet. Be the first!',
-                      style: TextStyle(color: Colors.grey),
+                      'No comments yet. Be the first.',
+                      style: BoardText.meta,
                     ),
                   ),
                 );
               }
+
               return ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: comments.length,
                 itemBuilder: (context, index) {
                   final comment = comments[index];
-                  return Card(
-                    color: Colors.grey.shade800,
+                  return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Author info row
-                          Row(
-                            children: [
-                              Icon(
-                                comment.isAnonymous
-                                    ? Icons.masks
-                                    : (comment.authorVerified
-                                        ? Icons.verified
-                                        : Icons.person),
-                                size: 14,
-                                color: comment.isAnonymous
-                                    ? Colors.grey.shade500
-                                    : (comment.authorVerified
-                                        ? Colors.blue
-                                        : Colors.orange),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: BoardColors.paper,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: BoardColors.line),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.masks,
+                              size: 14,
+                              color: BoardColors.muted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Anonymous',
+                              style: TextStyle(
+                                color: BoardColors.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                comment.authorDisplay,
-                                style: TextStyle(
-                                  color: comment.isAnonymous
-                                      ? Colors.grey.shade500
-                                      : Colors.grey.shade300,
-                                  fontSize: 12,
-                                  fontWeight: comment.isAnonymous
-                                      ? FontWeight.normal
-                                      : FontWeight.w600,
-                                ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              DateFormat.yMMMd()
+                                  .add_jm()
+                                  .format(comment.createdAt),
+                              style: TextStyle(
+                                color: BoardColors.muted,
+                                fontSize: 11,
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                DateFormat.yMMMd().add_jm().format(comment.createdAt),
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-                              ),
-                              // Edited indicator (legacy - comments can no longer be edited)
-                              if (comment.wasEdited) ...[
-                                const SizedBox(width: 6),
-                                Text(
-                                  '(edited)',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 10,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Comment content
-                          Text(
-                            comment.content,
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          comment.content,
+                          style: BoardText.body,
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -339,51 +191,55 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             },
           ),
           const SizedBox(height: 12),
-          // Sign-in prompt removed to allow anonymous comments
-          Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Comment identity toggle
-                _buildCommentIdentityToggle(),
-                const SizedBox(height: 8),
-                // Comment input row
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _commentController,
-                        decoration: InputDecoration(
-                          hintText: 'Add a comment...',
-                          filled: true,
-                          fillColor: const Color(0xFF212121),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        ),
-                        onSubmitted: (_) => _postComment(),
-                      ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _commentController,
+                  textInputAction: TextInputAction.send,
+                  decoration: InputDecoration(
+                    hintText: 'Add anonymous comment...',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: const BorderSide(color: BoardColors.line),
                     ),
-                    const SizedBox(width: 8),
-                    _isPostingComment
-                        ? const SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            icon: const FaIcon(FontAwesomeIcons.paperPlane),
-                            onPressed: _postComment,
-                            color: theme.colorScheme.primary,
-                          ),
-                  ],
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: const BorderSide(color: BoardColors.line),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide:
+                          const BorderSide(color: BoardColors.green, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                  ),
+                  onSubmitted: (_) => _postComment(),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              _isPostingComment
+                  ? const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      icon: const FaIcon(FontAwesomeIcons.paperPlane),
+                      onPressed: _postComment,
+                      color: theme.colorScheme.primary,
+                      tooltip: 'Post comment',
+                    ),
+            ],
+          ),
         ],
       ),
     );
