@@ -4,7 +4,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/post.dart';
 import '../../../core/utils/globals.dart';
-import '../../../app/theme.dart';
 import '../../../services/anonymous_id_service.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/rate_limiter.dart';
@@ -62,6 +61,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         'anonymous_user_id': await AnonymousIdService.getAnonymousId(),
         'content': sanitizedContent,
         'is_anonymous': true,
+        'author_username': await AnonymousIdService.getDisplayNameLabel(),
+        'author_verified': false,
       });
 
       await ref.read(watchedThreadsProvider.notifier).watchDetails(
@@ -143,8 +144,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: BoardColors.paper,
-                      borderRadius: BorderRadius.circular(14),
+                      color: const Color(0xFF25271F),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: BoardColors.line),
                     ),
                     child: Column(
@@ -159,7 +160,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Anonymous',
+                              comment.authorDisplay,
                               style: TextStyle(
                                 color: BoardColors.muted,
                                 fontSize: 12,
@@ -200,7 +201,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                   decoration: InputDecoration(
                     hintText: 'Add anonymous comment...',
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: const Color(0xFF303229),
+                    hintStyle: const TextStyle(color: BoardColors.muted),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                       borderSide: const BorderSide(color: BoardColors.line),
@@ -219,6 +221,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                       vertical: 10,
                     ),
                   ),
+                  style: BoardText.body,
                   onSubmitted: (_) => _postComment(),
                 ),
               ),
@@ -235,7 +238,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                   : IconButton(
                       icon: const FaIcon(FontAwesomeIcons.paperPlane),
                       onPressed: _postComment,
-                      color: theme.colorScheme.primary,
+                      color: BoardColors.green,
                       tooltip: 'Post comment',
                     ),
             ],

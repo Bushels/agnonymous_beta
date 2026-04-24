@@ -22,7 +22,7 @@ class CategoryChips extends StatelessWidget {
     return Container(
       height: 62,
       decoration: const BoxDecoration(
-        color: BoardColors.prairie,
+        color: Color(0xFF191B14),
         border: Border(
           bottom: BorderSide(color: BoardColors.line),
         ),
@@ -88,10 +88,10 @@ class _CategoryChip extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? accent : BoardColors.paper,
+          color: selected ? accent : const Color(0xFF25271F),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? accent : BoardColors.line,
+            color: selected ? accent : const Color(0xFF424637),
           ),
           boxShadow: selected
               ? [
@@ -111,7 +111,7 @@ class _CategoryChip extends StatelessWidget {
             Text(
               label,
               style: GoogleFonts.inter(
-                color: selected ? Colors.white : BoardColors.ink,
+                color: selected ? const Color(0xFF101610) : BoardColors.ink,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
               ),

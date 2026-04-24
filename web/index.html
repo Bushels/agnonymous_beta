@@ -12,22 +12,33 @@
     <!-- iOS meta tags & icons -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Agnonymous" />
     <link rel="apple-touch-icon" href="icons/Icon-192.png" />
 
-    <link rel="icon" type="image/svg+xml" href="icons/agnonymous-mark.svg" />
-    <link rel="alternate icon" type="image/png" href="favicon.png" />
+    <link rel="icon" href="favicon.ico?v=20260424" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png?v=20260424" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png?v=20260424" />
+    <link rel="icon" type="image/png" sizes="48x48" href="favicon.png?v=20260424" />
 
     <title>Agnonymous</title>
     <link rel="manifest" href="manifest.json" />
+
+    <!-- Microsoft Clarity analytics -->
+    <script type="text/javascript">
+      (function(c,l,a,r,i,t,y){
+          c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+      })(window, document, "clarity", "script", "wgtfhaimxv");
+    </script>
 
     <!-- Defer non-critical scripts to after page load -->
     <style>
       body {
         margin: 0;
-        background: #fff7e8;
-        color: #17211a;
+        background: #171812;
+        color: #f7f3e7;
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
           "Segoe UI", sans-serif;
@@ -44,37 +55,38 @@
         align-items: center;
         gap: 18px;
         background:
-          radial-gradient(circle at 50% 28%, rgba(233, 163, 24, 0.22), transparent 34%),
-          linear-gradient(180deg, #ffe9b8 0%, #fff7e8 48%, #eaf5d4 100%);
+          radial-gradient(circle at 28% 18%, rgba(214, 134, 81, 0.22), transparent 30%),
+          radial-gradient(circle at 78% 82%, rgba(89, 200, 93, 0.12), transparent 28%),
+          linear-gradient(145deg, #171812 0%, #2d2419 52%, #11130f 100%);
         z-index: 9999;
         transition: opacity 0.24s ease-out;
       }
       .loading-card {
         width: min(82vw, 340px);
         padding: 26px 22px 22px;
-        border: 1px solid #e6dec9;
-        border-radius: 30px;
-        background: rgba(255, 252, 245, 0.92);
-        box-shadow: 0 18px 44px rgba(60, 47, 22, 0.12);
+        border: 1px solid rgba(247, 243, 231, 0.08);
+        border-radius: 14px;
+        background: rgba(37, 39, 31, 0.92);
+        box-shadow: 0 20px 44px rgba(0, 0, 0, 0.3);
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
       }
       .loading-logo-wrap {
-        width: 86px;
-        height: 86px;
-        border-radius: 24px;
-        background: #fff2d2;
-        border: 1px solid #e6dec9;
+        width: 92px;
+        height: 92px;
+        border-radius: 18px;
+        background: #1d301d;
+        border: 1px solid rgba(89, 200, 93, 0.24);
         display: grid;
         place-items: center;
         margin-bottom: 16px;
         animation: breathe 1.8s ease-in-out infinite;
       }
       .loading-logo {
-        width: 62px;
-        height: 62px;
+        width: 74px;
+        height: 74px;
       }
       .loading-title {
         margin: 0;
@@ -85,7 +97,7 @@
       }
       .loading-copy {
         margin: 8px 0 18px;
-        color: #66715f;
+        color: #b1b6a4;
         font-size: 14px;
         line-height: 1.35;
         font-weight: 700;
@@ -93,14 +105,14 @@
       .loading-bar-container {
         width: 100%;
         height: 8px;
-        background-color: #e6dec9;
+        background-color: #3c4034;
         border-radius: 999px;
         overflow: hidden;
       }
       .loading-bar {
         width: 42%;
         height: 100%;
-        background: linear-gradient(90deg, #2f8c43, #e9a318, #e5533d);
+        background: linear-gradient(90deg, #59c85d, #e2be63, #d68651);
         border-radius: 999px;
         animation: loadingSlide 1.15s ease-in-out infinite;
       }
@@ -118,10 +130,14 @@
     <div id="loading-indicator">
       <div class="loading-card" role="status" aria-live="polite">
         <div class="loading-logo-wrap">
-          <img src="icons/agnonymous-mark.svg" class="loading-logo" alt="Agnonymous" />
+          <img
+            src="icons/Icon-192.png"
+            class="loading-logo"
+            alt="Agnonymous anonymous farmer field mark"
+          />
         </div>
         <h1 class="loading-title">Agnonymous</h1>
-        <p class="loading-copy">Opening the anonymous board.</p>
+        <p class="loading-copy">Opening the Monette field board.</p>
         <div class="loading-bar-container" aria-hidden="true">
           <div class="loading-bar"></div>
         </div>

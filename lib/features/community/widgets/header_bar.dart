@@ -139,7 +139,7 @@ class _HeaderBarState extends ConsumerState<HeaderBar> {
                     },
                   ),
                   filled: true,
-                  fillColor: Colors.black.withOpacity(0.2),
+                  fillColor: Colors.black.withValues(alpha: 0.2),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
@@ -166,7 +166,7 @@ class _HeaderBarState extends ConsumerState<HeaderBar> {
             hintText: 'Search posts...',
             prefixIcon: const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
             filled: true,
-            fillColor: Colors.black.withOpacity(0.2),
+            fillColor: Colors.black.withValues(alpha: 0.2),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(20),
@@ -183,9 +183,9 @@ class _HeaderBarState extends ConsumerState<HeaderBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [

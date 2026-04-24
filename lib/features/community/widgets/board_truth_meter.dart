@@ -32,8 +32,8 @@ class BoardTruthMeter extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF5),
-        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFF20231C),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: BoardColors.line),
       ),
       padding: const EdgeInsets.all(12),

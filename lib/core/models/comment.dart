@@ -37,8 +37,10 @@ class Comment {
       authorUsername: map['author_username'],
       authorVerified: map['author_verified'] ?? false,
       isDeleted: map['is_deleted'] ?? false,
-      deletedAt: map['deleted_at'] != null ? DateTime.parse(map['deleted_at']) : null,
-      editedAt: map['edited_at'] != null ? DateTime.parse(map['edited_at']) : null,
+      deletedAt:
+          map['deleted_at'] != null ? DateTime.parse(map['deleted_at']) : null,
+      editedAt:
+          map['edited_at'] != null ? DateTime.parse(map['edited_at']) : null,
     );
   }
 
@@ -47,7 +49,7 @@ class Comment {
 
   /// Get author display name
   String get authorDisplay {
-    if (isAnonymous) return 'Anonymous';
+    if (isAnonymous) return authorUsername ?? 'Anonymous';
     return authorUsername ?? 'Unknown User';
   }
 

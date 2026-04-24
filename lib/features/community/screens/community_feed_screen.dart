@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../create_post_screen.dart';
@@ -96,12 +95,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFFFFE9B8),
               BoardColors.prairie,
-              Color(0xFFEAF5D4),
+              BoardColors.soil,
+              Color(0xFF11130F),
             ],
           ),
         ),
@@ -148,7 +147,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 selectedCategory: selectedCategory,
               ),
               const SliverToBoxAdapter(
-                child: SizedBox(height: 118),
+                child: SizedBox(height: 96),
               ),
             ],
           ),
@@ -158,9 +157,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       floatingActionButton: FloatingActionButton(
         heroTag: 'post_comment_btn',
         onPressed: _openCreatePost,
-        backgroundColor: BoardColors.monette,
-        foregroundColor: Colors.white,
-        elevation: 10,
+        backgroundColor: BoardColors.green,
+        foregroundColor: const Color(0xFF0F160F),
+        elevation: 12,
         tooltip: 'Post anonymously',
         child: const FaIcon(FontAwesomeIcons.penToSquare, size: 20),
       ),
@@ -209,111 +208,132 @@ class _RoomHeroState extends State<_RoomHero> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-            child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: BoardColors.paper.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: BoardColors.line),
+                color: Colors.black.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF3C2F16).withValues(alpha: 0.12),
-                    blurRadius: 30,
-                    offset: const Offset(0, 16),
+                    color: Colors.black.withValues(alpha: 0.26),
+                    blurRadius: 22,
+                    offset: const Offset(0, 14),
                   ),
                 ],
               ),
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        height: 42,
-                        width: 42,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF2D2),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: BoardColors.line),
-                        ),
-                        alignment: Alignment.center,
-                        child: SvgPicture.asset(
-                          'assets/images/agnonymous_mark.svg',
-                          width: 30,
-                          height: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Agnonymous',
-                              style: GoogleFonts.outfit(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: BoardColors.ink,
-                              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          height: 42,
+                          width: 42,
+                          decoration: BoxDecoration(
+                            color: BoardColors.field,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: BoardColors.line),
+                          ),
+                          alignment: Alignment.center,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: Image.asset(
+                              'assets/images/app_icon.png',
+                              width: 38,
+                              height: 38,
+                              fit: BoxFit.cover,
+                              semanticLabel:
+                                  'Agnonymous anonymous farmer field mark',
                             ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                const _LiveDot(),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    _statusText(),
-                                    overflow: TextOverflow.ellipsis,
-                                    style: BoardText.meta,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Agnonymous',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: BoardColors.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const _LiveDot(),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      _statusText(),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: BoardText.meta,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton.filledTonal(
-                        onPressed: () => setState(() => searchOpen = true),
-                        icon: const FaIcon(
-                          FontAwesomeIcons.magnifyingGlass,
-                          size: 16,
-                        ),
-                        tooltip: 'Search posts',
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed:
-                            widget.isRefreshing ? null : widget.onRefresh,
-                        icon: widget.isRefreshing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const FaIcon(
-                                FontAwesomeIcons.arrowsRotate,
-                                size: 16,
+                                ],
                               ),
-                        tooltip: 'Refresh board',
+                            ],
+                          ),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: () => setState(() => searchOpen = true),
+                          style: IconButton.styleFrom(
+                            backgroundColor: BoardColors.clay,
+                            foregroundColor: BoardColors.amber,
+                          ),
+                          icon: const FaIcon(
+                            FontAwesomeIcons.magnifyingGlass,
+                            size: 16,
+                          ),
+                          tooltip: 'Search posts',
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          onPressed:
+                              widget.isRefreshing ? null : widget.onRefresh,
+                          style: IconButton.styleFrom(
+                            backgroundColor: BoardColors.clay,
+                            foregroundColor: BoardColors.amber,
+                          ),
+                          icon: widget.isRefreshing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const FaIcon(
+                                  FontAwesomeIcons.arrowsRotate,
+                                  size: 16,
+                                ),
+                          tooltip: 'Refresh board',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(room, style: BoardText.roomTitle),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Anonymous field reports, questions, and photos from the prairie.',
+                      style: BoardText.body.copyWith(
+                        color: BoardColors.muted,
+                        fontWeight: FontWeight.w600,
                       ),
+                    ),
+                    if (searchOpen) ...[
+                      const SizedBox(height: 16),
+                      _searchField(),
                     ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(room, style: BoardText.roomTitle),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Anonymous agriculture discussion. No sign up. No pricing board. Just the thread.',
-                    style: BoardText.body.copyWith(color: BoardColors.muted),
-                  ),
-                  if (searchOpen) ...[
-                    const SizedBox(height: 16),
-                    _searchField(),
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -338,12 +358,23 @@ class _RoomHeroState extends State<_RoomHero> {
           },
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: const Color(0xFF303229),
+        hintStyle: const TextStyle(color: BoardColors.muted),
+        labelStyle: const TextStyle(color: BoardColors.muted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: const BorderSide(color: BoardColors.line),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: BoardColors.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: BoardColors.green),
+        ),
       ),
+      style: BoardText.body,
       onChanged: widget.onSearchChanged,
     );
   }

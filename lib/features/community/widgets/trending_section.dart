@@ -19,7 +19,7 @@ class TrendingSectionDelegate extends SliverPersistentHeaderDelegate {
 
         return Container(
           height: 52.0,
-          color: BoardColors.prairie,
+          color: const Color(0xFF191B14),
           padding: EdgeInsets.symmetric(
             horizontal: isSmallScreen ? 12 : 18,
             vertical: 8,
@@ -109,10 +109,10 @@ class _SortModeChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: isSelected ? chipColor : BoardColors.paper,
+          color: isSelected ? chipColor : const Color(0xFF25271F),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: isSelected ? chipColor : BoardColors.line,
+            color: isSelected ? chipColor : const Color(0xFF424637),
             width: 1,
           ),
         ),
@@ -122,7 +122,7 @@ class _SortModeChip extends StatelessWidget {
             FaIcon(
               icon,
               size: 12,
-              color: isSelected ? Colors.white : chipColor,
+              color: isSelected ? const Color(0xFF101610) : chipColor,
             ),
             const SizedBox(width: 6),
             Text(
@@ -130,7 +130,7 @@ class _SortModeChip extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
-                color: isSelected ? Colors.white : BoardColors.ink,
+                color: isSelected ? const Color(0xFF101610) : BoardColors.ink,
               ),
             ),
           ],

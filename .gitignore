@@ -46,3 +46,18 @@ app.*.map.json
 # Ignore environment variables file
 .env
 nul
+
+# Vercel
+.vercel
+
+# Local deployment/build cache
+.firebase/
+
+# Local assistant/tool state
+.claude/settings.local.json
+
+# Local generated analysis output
+analysis.txt
+analyze_results.txt
+build_log.txt
+lib_analysis.txt

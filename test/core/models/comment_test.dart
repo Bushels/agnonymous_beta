@@ -68,13 +68,24 @@ void main() {
     });
 
     group('authorDisplay', () {
-      test('returns "Anonymous" when isAnonymous is true', () {
+      test('returns anonymous display label when isAnonymous is true', () {
         final comment = Comment.fromMap({
           'id': 'c1',
           'content': 'test',
           'created_at': '2026-01-01T00:00:00Z',
           'is_anonymous': true,
-          'author_username': 'ShouldNotShow',
+          'author_username': 'MonetteCanola',
+        });
+        expect(comment.authorDisplay, 'MonetteCanola');
+      });
+
+      test('returns "Anonymous" when anonymous username is null', () {
+        final comment = Comment.fromMap({
+          'id': 'c1b',
+          'content': 'test',
+          'created_at': '2026-01-01T00:00:00Z',
+          'is_anonymous': true,
+          'author_username': null,
         });
         expect(comment.authorDisplay, 'Anonymous');
       });
