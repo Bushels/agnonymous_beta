@@ -34,7 +34,7 @@ Older repo documents still describe some of those ideas. Treat them as legacy co
 2. Monette Room loads first.
 3. Reader can switch rooms or search.
 4. Reader taps the bottom icon-only post button.
-5. Reader posts anonymously with category, title, details, and optional region.
+5. Reader posts anonymously with category, title, details, optional region, optional photos, a local display label, and an optional Monette farming-area reference when posting in Monette Room.
 6. Other readers comment anonymously.
 7. Readers vote with thumbs up, neutral, or thumbs down.
 8. Readers watch threads on their device and see new-comment markers.
@@ -54,6 +54,13 @@ The app uses a locally stored anonymous device ID:
 
 If browser storage is cleared, the watch list and local identity reset. That is acceptable for v1.
 
+The app may also store an optional anonymous display name locally:
+
+- Default public label is `Anonymous Farmer`.
+- A farmer can save a display label on the current device or override it for one post.
+- This is public label text only, not an account.
+- Do not use browser/device fingerprinting to recreate identity after local storage is cleared.
+
 ## Current UX Decisions
 
 - First room: Monette.
@@ -62,10 +69,12 @@ If browser storage is cleared, the watch list and local identity reset. That is 
 - No duplicate post prompt in the hero.
 - No duplicate empty-state post button.
 - Post card actions: comments, watch, optional share later.
+- Composer supports optional photos and a compact "Posting as" local display label control.
+- Monette posts support an optional public farming-area tag so threads can be searched and organized by property area.
 - Community read system: thumbs up, neutral, thumbs down.
 - Funny action removed from UI.
-- Loading screen: light prairie-style loading card with refreshed sprout/signal mark.
-- Brand mark: sprout plus signal arcs, replacing the old anonymous-person-in-field icon.
+- Loading screen: light prairie-style loading card with the relaunched anonymous farmer field mark.
+- Brand mark: a tightened crop of the original anonymous figure in prairie grass, with a restrained North American prairie ball-cap silhouette in Deere-style green/yellow; avoid straw-hat, costume-style, or actual brand-logo overlays.
 
 ## Current Technical Surface
 
@@ -89,9 +98,18 @@ Primary board files:
 
 Brand/loading assets:
 
-- `assets/images/agnonymous_mark.svg`
+- `assets/images/agnonymous_logo.png`
 - `assets/images/app_icon.png`
 - `assets/images/app_icon_foreground.png`
+- `android/app/src/main/res/**/ic_launcher*.png`
+- `ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png`
+- `macos/Runner/Assets.xcassets/AppIcon.appiconset/*.png`
+- `windows/runner/resources/app_icon.ico`
+- `web/favicon.png`
+- `web/favicon.ico`
+- `web/icons/favicon-16.png`
+- `web/icons/favicon-32.png`
+- `web/icons/favicon-48.png`
 - `web/index.html`
 - `web/manifest.json`
 - `web/icons/*`
@@ -101,6 +119,12 @@ Supabase migrations added for relaunch:
 - `20260423150000_anonymous_board_v1.sql`
 - `20260423162000_anonymous_post_watches.sql`
 - `20260423170000_anonymous_board_backfill.sql`
+- `20260424000100_enforce_anonymous_id_header.sql`
+- `20260424001000_anonymous_post_images_and_alias.sql`
+- `20260424002000_cleanup_codex_live_proof_posts.sql`
+- `20260424003000_harden_anonymous_board_rls.sql`
+- `20260424004000_cleanup_post_rls_live_proof.sql`
+- `20260424120000_monette_area_reference.sql`
 
 ## Current Database Intent
 
@@ -110,11 +134,15 @@ Posts:
 - `user_id` is null for board posts.
 - `anonymous_user_id` is required.
 - `is_anonymous` is true.
+- `author_username` is public anonymous display text only.
+- `image_urls` stores optional public post images; uploads are client re-encoded before storage.
+- `monette_area` stores an optional public Monette farming-area label for Monette posts only.
 
 Comments:
 
 - Anonymous insert allowed.
 - `anonymous_user_id` is required.
+- `author_username` is public anonymous display text only.
 - Comment count backfills onto posts.
 
 Votes:
@@ -146,11 +174,10 @@ Do not bend the existing auth-user notification table into anonymous notificatio
 
 ## Next Highest-Value Work
 
-1. Apply Supabase relaunch migrations safely.
-2. Test one real post, comment, watch, refresh, and vote cycle against Supabase.
-3. Fix any live-data rendering issues from old posts.
-4. Add report/hide moderation path.
-5. Add shareable thread route.
+1. Fix any live-data rendering issues from old posts.
+2. Add report/hide moderation path.
+3. Add shareable thread route.
+4. Decide whether the historical backfill migration should be applied.
 6. Add legal-risk copy for naming people or making financial misconduct claims.
 7. Tune mobile density with real posts, not empty states only.
 

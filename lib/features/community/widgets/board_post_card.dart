@@ -9,6 +9,7 @@ class BoardPostCard extends StatelessWidget {
   final String content;
   final String category;
   final String categoryEmoji;
+  final String? monetteArea;
   final DateTime createdAt;
   final String? authorUsername;
   final bool? authorVerified;
@@ -28,6 +29,7 @@ class BoardPostCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final String? imageUrl;
+  final List<String> imageUrls;
 
   const BoardPostCard({
     super.key,
@@ -35,6 +37,7 @@ class BoardPostCard extends StatelessWidget {
     required this.content,
     required this.category,
     required this.categoryEmoji,
+    this.monetteArea,
     required this.createdAt,
     this.authorUsername,
     this.authorVerified,
@@ -54,6 +57,7 @@ class BoardPostCard extends StatelessWidget {
     this.onEdit,
     this.onDelete,
     this.imageUrl,
+    this.imageUrls = const [],
   });
 
   @override
@@ -61,19 +65,23 @@ class BoardPostCard extends StatelessWidget {
     final accent = boardCategoryColor(category);
     final borderColor =
         accent.withValues(alpha: category == 'Monette' ? 0.6 : 0.25);
+    final attachedImages = <String>{
+      ...imageUrls,
+      if (imageUrl != null && imageUrl!.trim().isNotEmpty) imageUrl!,
+    }.toList();
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: BoardColors.paper,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF3C2F16).withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -85,15 +93,15 @@ class BoardPostCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(height: 5, color: accent),
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _PostMetaRow(
                       category: category,
                       categoryEmoji: categoryEmoji,
+                      monetteArea: monetteArea,
                       createdAt: createdAt,
                       accent: accent,
                       isAnonymous: isAnonymous,
@@ -101,17 +109,21 @@ class BoardPostCard extends StatelessWidget {
                       authorVerified: authorVerified,
                       wasEdited: wasEdited,
                     ),
-                    const SizedBox(height: 12),
-                    Text(title, style: BoardText.title),
                     const SizedBox(height: 10),
+                    Text(title, style: BoardText.title),
+                    const SizedBox(height: 7),
                     Text(
                       _previewText(content),
                       maxLines: isCommentsExpanded ? 12 : 4,
                       overflow: TextOverflow.ellipsis,
                       style: BoardText.body.copyWith(
-                        color: BoardColors.ink.withValues(alpha: 0.88),
+                        color: BoardColors.ink.withValues(alpha: 0.9),
                       ),
                     ),
+                    if (attachedImages.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _PostImageGallery(imageUrls: attachedImages),
+                    ],
                     const SizedBox(height: 14),
                     _ThreadSignalRow(
                       commentCount: commentCount,
@@ -138,7 +150,7 @@ class BoardPostCard extends StatelessWidget {
                 Container(
                   width: double.infinity,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFFF3D7),
+                    color: Color(0xFF1D1F18),
                     border: Border(top: BorderSide(color: BoardColors.line)),
                   ),
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -161,6 +173,7 @@ class BoardPostCard extends StatelessWidget {
 class _PostMetaRow extends StatelessWidget {
   final String category;
   final String categoryEmoji;
+  final String? monetteArea;
   final DateTime createdAt;
   final Color accent;
   final bool isAnonymous;
@@ -171,6 +184,7 @@ class _PostMetaRow extends StatelessWidget {
   const _PostMetaRow({
     required this.category,
     required this.categoryEmoji,
+    required this.monetteArea,
     required this.createdAt,
     required this.accent,
     required this.isAnonymous,
@@ -187,8 +201,9 @@ class _PostMetaRow extends StatelessWidget {
           height: 34,
           width: 34,
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
+            color: accent.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: accent.withValues(alpha: 0.28)),
           ),
           alignment: Alignment.center,
           child: Text(categoryEmoji, style: const TextStyle(fontSize: 17)),
@@ -204,6 +219,18 @@ class _PostMetaRow extends StatelessWidget {
                 category.toUpperCase(),
                 style: BoardText.meta.copyWith(color: accent),
               ),
+              if (_hasMonetteArea()) ...[
+                _Dot(color: BoardColors.line),
+                const FaIcon(
+                  FontAwesomeIcons.locationDot,
+                  size: 11,
+                  color: BoardColors.monette,
+                ),
+                Text(
+                  monetteArea!.trim(),
+                  style: BoardText.meta.copyWith(color: BoardColors.monette),
+                ),
+              ],
               _Dot(color: BoardColors.line),
               FaIcon(
                 isAnonymous
@@ -213,7 +240,9 @@ class _PostMetaRow extends StatelessWidget {
                 color: BoardColors.muted,
               ),
               Text(
-                isAnonymous ? 'Anonymous' : (authorUsername ?? 'Unknown'),
+                isAnonymous
+                    ? _anonymousDisplayName()
+                    : (authorUsername ?? 'Unknown'),
                 style: BoardText.meta,
               ),
               if (authorVerified == true)
@@ -235,6 +264,100 @@ class _PostMetaRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  String _anonymousDisplayName() {
+    final displayName = authorUsername?.trim() ?? '';
+    return displayName.isEmpty ? 'Anonymous' : displayName;
+  }
+
+  bool _hasMonetteArea() {
+    return category == 'Monette' && (monetteArea?.trim().isNotEmpty ?? false);
+  }
+}
+
+class _PostImageGallery extends StatelessWidget {
+  final List<String> imageUrls;
+
+  const _PostImageGallery({required this.imageUrls});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrls.length == 1) {
+      return _PostImageTile(
+        imageUrl: imageUrls.first,
+        width: double.infinity,
+        aspectRatio: 16 / 10,
+      );
+    }
+
+    return SizedBox(
+      height: 128,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: imageUrls.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          return _PostImageTile(
+            imageUrl: imageUrls[index],
+            width: 150,
+            aspectRatio: 1.12,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PostImageTile extends StatelessWidget {
+  final String imageUrl;
+  final double width;
+  final double aspectRatio;
+
+  const _PostImageTile({
+    required this.imageUrl,
+    required this.width,
+    required this.aspectRatio,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
+        child: SizedBox(
+          width: width,
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: const Color(0xFF303229),
+                alignment: Alignment.center,
+                child: const FaIcon(
+                  FontAwesomeIcons.image,
+                  color: BoardColors.muted,
+                  size: 18,
+                ),
+              );
+            },
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                color: const Color(0xFF303229),
+                alignment: Alignment.center,
+                child: const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }
@@ -323,9 +446,10 @@ class _ActionPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: filled ? color.withValues(alpha: 0.12) : Colors.white,
+          color:
+              filled ? color.withValues(alpha: 0.16) : const Color(0xFF1B1D17),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          border: Border.all(color: color.withValues(alpha: 0.32)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -356,8 +480,8 @@ class _SignalPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFAED),
-        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFF1C1E18),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: BoardColors.line),
       ),
       padding: const EdgeInsets.all(10),

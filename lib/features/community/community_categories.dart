@@ -8,6 +8,16 @@ class CommunityCategory {
   });
 }
 
+class MonetteArea {
+  final String name;
+  final String region;
+
+  const MonetteArea({
+    required this.name,
+    required this.region,
+  });
+}
+
 const List<CommunityCategory> boardCategories = [
   CommunityCategory(name: 'Monette', icon: '\u{1F4CD}'),
   CommunityCategory(name: 'General', icon: '\u{1F4DD}'),
@@ -20,6 +30,37 @@ const List<CommunityCategory> boardCategories = [
 ];
 
 const String defaultBoardCategory = 'Monette';
+
+const List<MonetteArea> monetteAreas = [
+  MonetteArea(name: 'Hafford', region: 'West-Central SK'),
+  MonetteArea(name: 'Swift Current', region: 'Southwest SK'),
+  MonetteArea(name: 'Stewart Valley', region: 'Swift Current, SK'),
+  MonetteArea(name: 'Regina South', region: 'Regina, SK'),
+  MonetteArea(name: 'Regina I', region: 'Regina, SK'),
+  MonetteArea(name: 'Havre Land', region: 'Havre / Box Elder, MT'),
+  MonetteArea(name: 'Wymark', region: 'Southwest SK'),
+  MonetteArea(name: 'Wymark / Waldeck', region: 'Southwest SK'),
+  MonetteArea(name: 'Vanguard', region: 'Southwest SK'),
+  MonetteArea(name: 'Ponteix', region: 'Southwest SK'),
+  MonetteArea(name: 'Outlook', region: 'Central SK - Irrigation'),
+  MonetteArea(name: 'Raymore', region: 'East-Central SK'),
+  MonetteArea(name: 'Kamsack', region: 'East-Central SK'),
+  MonetteArea(name: 'Prince Albert', region: 'North-Central SK'),
+  MonetteArea(name: 'Calderbank', region: 'Central SK'),
+  MonetteArea(name: 'Admiral', region: 'Southwest SK'),
+  MonetteArea(name: 'Eddystone', region: 'Interlake MB'),
+  MonetteArea(name: 'The Pas', region: 'Northern MB'),
+  MonetteArea(name: 'Montana', region: 'Big Horn County, MT'),
+  MonetteArea(name: 'Other Monette area', region: 'Not listed'),
+];
+
+bool isKnownMonetteArea(String? area) {
+  if (area == null) return false;
+  final normalized = area.trim().toLowerCase();
+  return monetteAreas.any(
+    (monetteArea) => monetteArea.name.toLowerCase() == normalized,
+  );
+}
 
 String iconForBoardCategory(String category) {
   for (final boardCategory in boardCategories) {

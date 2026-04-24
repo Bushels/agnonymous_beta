@@ -22,7 +22,7 @@ This is not a market-intelligence relaunch. Do not add price tracking, fertilize
 - Removed the top composer-style post prompt.
 - Removed the empty-state duplicate post button.
 - Added refreshed prairie visual system.
-- Replaced the old anonymous-person icon with the sprout/signal mark.
+- Restored the original anonymous field-mark visual language with a tighter relaunch crop and restrained Deere-green prairie ball-cap silhouette for the loading and home icons.
 - Reworked the web loading screen to match the current app.
 - Added `BoardPostCard`.
 - Added `BoardTruthMeter`.
@@ -30,6 +30,7 @@ This is not a market-intelligence relaunch. Do not add price tracking, fertilize
 - Added new-comment marker behavior for watched threads.
 - Removed the Funny button from the UI.
 - Kept legacy `funny` vote rows in the database to avoid unnecessary historical mutation.
+- Added an optional Monette farming-area reference on Monette posts only.
 
 ### Current Visible Vote System
 
@@ -53,15 +54,22 @@ Legacy hidden signal:
 
 ### Current Brand/Loading Assets
 
-- `assets/images/agnonymous_mark.svg`
+- `assets/images/agnonymous_logo.png`
 - `assets/images/app_icon.png`
 - `assets/images/app_icon_foreground.png`
+- `android/app/src/main/res/**/ic_launcher*.png`
+- `ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png`
+- `macos/Runner/Assets.xcassets/AppIcon.appiconset/*.png`
+- `windows/runner/resources/app_icon.ico`
 - `web/favicon.png`
+- `web/favicon.ico`
+- `web/icons/favicon-16.png`
+- `web/icons/favicon-32.png`
+- `web/icons/favicon-48.png`
 - `web/icons/Icon-192.png`
 - `web/icons/Icon-512.png`
 - `web/icons/Icon-maskable-192.png`
 - `web/icons/Icon-maskable-512.png`
-- `web/icons/agnonymous-mark.svg`
 - `web/index.html`
 - `web/manifest.json`
 
@@ -143,7 +151,7 @@ Sources:
 - Latest and Active feeds.
 - Pull-to-refresh and visible refresh affordance.
 - Comment count, vote count, and active thread sorting.
-- Mobile-first post composer with optional region and category only.
+- Mobile-first post composer with optional region, category, photos, local anonymous display label, and Monette-only farming-area reference.
 - RLS and RPCs that allow anonymous posting while preventing obvious self-vote abuse.
 - Icon-only bottom post button.
 - No top duplicate post prompt.
@@ -161,7 +169,7 @@ Sources:
 ### P2 High-Value Board Products
 
 - Monette room: category-specific feed with pinned context and active posts.
-- Evidence prompts: optional "what did you see / where / when" structure, not required file upload.
+- Evidence prompts: optional "what did you see / where / when" structure beyond the current photo attachment.
 - Moderation queue: flag, hide, restore, and audit actions without revealing anonymous user mappings.
 - Legal-risk labels: lightweight reminders around naming people, fraud allegations, and unverifiable claims.
 - Public read-only archive: permanent links to high-value discussions, still no accounts.
@@ -186,6 +194,12 @@ Local SQL files added for the relaunch:
 - `supabase/migrations/20260423150000_anonymous_board_v1.sql`
 - `supabase/migrations/20260423162000_anonymous_post_watches.sql`
 - `supabase/migrations/20260423170000_anonymous_board_backfill.sql`
+- `supabase/migrations/20260424000100_enforce_anonymous_id_header.sql`
+- `supabase/migrations/20260424001000_anonymous_post_images_and_alias.sql`
+- `supabase/migrations/20260424002000_cleanup_codex_live_proof_posts.sql`
+- `supabase/migrations/20260424003000_harden_anonymous_board_rls.sql`
+- `supabase/migrations/20260424004000_cleanup_post_rls_live_proof.sql`
+- `supabase/migrations/20260424120000_monette_area_reference.sql`
 
 Safe database path:
 1. Verify remote columns and RPCs through REST or targeted SQL.
@@ -215,6 +229,11 @@ of these, stop and re-read this section first.
 - `d71a0ef` feat: April 2026 anonymous-board relaunch (122 files, −27k LoC)
 - `a371a04` fix: mark build.sh executable for Vercel deploys
 - `1393d7b` fix: drop .env from pubspec assets for CI builds
+- `20260423150000_anonymous_board_v1.sql`, `20260423162000_anonymous_post_watches.sql`, and `20260424000100_enforce_anonymous_id_header.sql` applied remotely to `ibgsloyjxdopkvwqcqwh` on 2026-04-24.
+- `20260424001000_anonymous_post_images_and_alias.sql` applied remotely to `ibgsloyjxdopkvwqcqwh` on 2026-04-24 for anonymous display labels and `post-images` storage.
+- `20260424002000_cleanup_codex_live_proof_posts.sql`, `20260424003000_harden_anonymous_board_rls.sql`, and `20260424004000_cleanup_post_rls_live_proof.sql` applied remotely on 2026-04-24 to hide QA proof posts and remove legacy permissive read policies.
+- Live proof on 2026-04-24 passed for image upload, anonymous display label, post insert, comment insert, vote RPC counts, and header-enforced watch RPCs.
+- Anon REST verification now returns zero `Codex live proof%` posts after cleanup and RLS hardening.
 
 ### What was purged — **do not restore without a product decision**
 

@@ -6,6 +6,7 @@ class Post {
   final String content;
   final String category;
   final String? provinceState;
+  final String? monetteArea;
   final DateTime createdAt;
   final int commentCount;
   final int voteCount;
@@ -35,6 +36,7 @@ class Post {
 
   // Verification image (required for Input Prices)
   final String? imageUrl;
+  final List<String> imageUrls;
 
   Post({
     required this.id,
@@ -42,6 +44,7 @@ class Post {
     required this.content,
     required this.category,
     this.provinceState,
+    this.monetteArea,
     required this.createdAt,
     required this.commentCount,
     required this.voteCount,
@@ -63,15 +66,20 @@ class Post {
     this.editedAt,
     this.editCount = 0,
     this.imageUrl,
-  });
+    List<String>? imageUrls,
+  }) : imageUrls = imageUrls ?? _normalizeImageUrls(imageUrl, null);
 
   factory Post.fromMap(Map<String, dynamic> map) {
+    final imageUrl = map['image_url'];
+    final imageUrls = _normalizeImageUrls(imageUrl, map['image_urls']);
+
     return Post(
       id: map['id'] ?? '',
       title: map['title'] ?? 'Untitled',
       content: map['content'] ?? '',
       category: map['category'] ?? 'General',
       provinceState: map['province_state'],
+      monetteArea: map['monette_area'],
       createdAt: DateTime.parse(map['created_at']),
       commentCount: map['comment_count'] ?? 0,
       voteCount: map['vote_count'] ?? 0,
@@ -80,7 +88,9 @@ class Post {
           ? TruthMeterStatus.fromString(map['truth_meter_status'])
           : TruthMeterStatus.unrated,
       adminVerified: map['admin_verified'] ?? false,
-      verifiedAt: map['verified_at'] != null ? DateTime.parse(map['verified_at']) : null,
+      verifiedAt: map['verified_at'] != null
+          ? DateTime.parse(map['verified_at'])
+          : null,
       verifiedBy: map['verified_by'],
       thumbsUpCount: map['thumbs_up_count'] ?? 0,
       thumbsDownCount: map['thumbs_down_count'] ?? 0,
@@ -91,11 +101,34 @@ class Post {
       authorUsername: map['author_username'],
       authorVerified: map['author_verified'] ?? false,
       isDeleted: map['is_deleted'] ?? false,
-      deletedAt: map['deleted_at'] != null ? DateTime.parse(map['deleted_at']) : null,
-      editedAt: map['edited_at'] != null ? DateTime.parse(map['edited_at']) : null,
+      deletedAt:
+          map['deleted_at'] != null ? DateTime.parse(map['deleted_at']) : null,
+      editedAt:
+          map['edited_at'] != null ? DateTime.parse(map['edited_at']) : null,
       editCount: map['edit_count'] ?? 0,
-      imageUrl: map['image_url'],
+      imageUrl: imageUrl,
+      imageUrls: imageUrls,
     );
+  }
+
+  static List<String> _normalizeImageUrls(
+    String? imageUrl,
+    dynamic imageUrlsValue,
+  ) {
+    final urls = <String>[];
+    if (imageUrlsValue is List) {
+      for (final value in imageUrlsValue) {
+        final url = value?.toString().trim() ?? '';
+        if (url.isNotEmpty) urls.add(url);
+      }
+    }
+
+    final legacyUrl = imageUrl?.trim() ?? '';
+    if (legacyUrl.isNotEmpty && !urls.contains(legacyUrl)) {
+      urls.insert(0, legacyUrl);
+    }
+
+    return urls;
   }
 
   /// Check if post has been edited
@@ -103,7 +136,7 @@ class Post {
 
   /// Get author display name
   String get authorDisplay {
-    if (isAnonymous) return 'Anonymous';
+    if (isAnonymous) return authorUsername ?? 'Anonymous';
     return authorUsername ?? 'Unknown User';
   }
 

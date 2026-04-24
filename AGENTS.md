@@ -9,6 +9,7 @@ Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
 - No sign up or sign in.
 - Anonymous reading, posting, commenting, and voting.
 - Monette is the first-class launch room.
+- Monette posts can optionally reference a public farming area from the Monette-only area menu.
 - The bottom post control is icon-only.
 - Watch state is tied to the anonymous device ID, not an account.
 - The truth meter uses three board signals: thumbs up, neutral, thumbs down.

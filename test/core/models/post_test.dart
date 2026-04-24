@@ -12,6 +12,7 @@ void main() {
           'content': 'Canola hit record highs this week.',
           'category': 'Markets',
           'province_state': 'SK',
+          'monette_area': 'Hafford',
           'created_at': '2026-03-01T12:00:00Z',
           'comment_count': 5,
           'vote_count': 12,
@@ -42,6 +43,7 @@ void main() {
         expect(post.content, 'Canola hit record highs this week.');
         expect(post.category, 'Markets');
         expect(post.provinceState, 'SK');
+        expect(post.monetteArea, 'Hafford');
         expect(post.createdAt, DateTime.parse('2026-03-01T12:00:00Z'));
         expect(post.commentCount, 5);
         expect(post.voteCount, 12);
@@ -78,6 +80,7 @@ void main() {
         expect(post.content, '');
         expect(post.category, 'General');
         expect(post.provinceState, isNull);
+        expect(post.monetteArea, isNull);
         expect(post.createdAt, DateTime.parse('2026-01-15T09:30:00Z'));
         expect(post.commentCount, 0);
         expect(post.voteCount, 0);
@@ -150,13 +153,13 @@ void main() {
     });
 
     group('authorDisplay', () {
-      test('returns "Anonymous" when isAnonymous is true', () {
+      test('returns anonymous display label when isAnonymous is true', () {
         final post = Post.fromMap({
           'created_at': '2026-01-01T00:00:00Z',
           'is_anonymous': true,
-          'author_username': 'ShouldNotShow',
+          'author_username': 'PrairieSource',
         });
-        expect(post.authorDisplay, 'Anonymous');
+        expect(post.authorDisplay, 'PrairieSource');
       });
 
       test('returns username when not anonymous and username is set', () {

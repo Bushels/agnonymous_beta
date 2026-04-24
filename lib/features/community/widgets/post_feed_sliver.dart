@@ -110,6 +110,7 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
           .where((post) =>
               post.title.toLowerCase().contains(query) ||
               post.content.toLowerCase().contains(query) ||
+              (post.monetteArea?.toLowerCase().contains(query) ?? false) ||
               post.category.toLowerCase().contains(query))
           .toList();
     }

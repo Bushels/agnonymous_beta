@@ -268,29 +268,13 @@ class _PostCardState extends ConsumerState<PostCard> {
         throw rateLimitError;
       }
 
-      // Try RPC first, fall back to direct upsert if it fails
-      try {
-        await supabase.rpc('cast_user_vote', params: {
-          'post_id_in': widget.post.id,
-          'user_id_in': null,
-          'anonymous_user_id_in': anonId,
-          'vote_type_in': voteType,
-        });
-      } catch (rpcError) {
-        // RPC failed (likely doesn't exist), use direct upsert
-        // logger.w('RPC cast_user_vote failed, using direct upsert: $rpcError');
-
-        // Table uses anonymous_user_id as the main identifier for guests
-        await supabase.from('truth_votes').upsert(
-          {
-            'post_id': widget.post.id,
-            'anonymous_user_id': anonId,
-            'vote_type': voteType,
-            'is_anonymous': true,
-          },
-          onConflict: 'post_id,anonymous_user_id', // Start with anon constraint
-        );
-      }
+      // Direct truth_votes writes are blocked by RLS; the RPC owns validation.
+      await supabase.rpc('cast_user_vote', params: {
+        'post_id_in': widget.post.id,
+        'user_id_in': null,
+        'anonymous_user_id_in': anonId,
+        'vote_type_in': voteType,
+      });
 
       // Record successful vote for rate limiting
       rateLimiter.recordVote(widget.post.id);
@@ -368,12 +352,14 @@ class _PostCardState extends ConsumerState<PostCard> {
       content: widget.post.content,
       category: widget.post.category,
       categoryEmoji: getIconForCategory(widget.post.category),
+      monetteArea: widget.post.monetteArea,
       createdAt: widget.post.createdAt,
       authorUsername: widget.post.authorUsername,
       authorVerified: widget.post.authorVerified,
       isAnonymous: widget.post.isAnonymous,
       commentCount: widget.post.commentCount,
       imageUrl: widget.post.imageUrl,
+      imageUrls: widget.post.imageUrls,
       isCommentsExpanded: _isCommentsExpanded,
       isWatched: isWatched,
       newCommentCount: newCommentCount,
