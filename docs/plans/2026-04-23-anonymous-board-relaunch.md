@@ -201,3 +201,115 @@ Safe database path:
 4. Mobile polish: density with real posts, long titles, long comments, and small phones.
 5. Moderation: report/hide flow and admin-only review path.
 6. Launch: Monette-specific route and shareable thread links.
+
+---
+
+## 2026-04-24 Ship Log — Read Before Reverting Anything
+
+This section documents what shipped to production on 2026-04-24 and the
+non-obvious fixes that must survive. If you find yourself about to undo any
+of these, stop and re-read this section first.
+
+### Commits on `main` (in order)
+
+- `d71a0ef` feat: April 2026 anonymous-board relaunch (122 files, −27k LoC)
+- `a371a04` fix: mark build.sh executable for Vercel deploys
+- `1393d7b` fix: drop .env from pubspec assets for CI builds
+
+### What was purged — **do not restore without a product decision**
+
+Client:
+- `lib/screens/**` — entire directory (dashboards, markets, auth, profile,
+  leaderboard, landing, notifications, map, reporting, pricing, settings)
+- `lib/widgets/{ads,charts,chat,map,market,reporting,ticker}/**`
+- Stand-alone dead widgets: `glass_bottom_nav`, `glass_container`,
+  `luxury_post_card`, `luxury_theme`, `truth_meter`, `trending_posts`,
+  `reputation_badge`, `user_badge`, `header_bar` (legacy), `error_boundary`,
+  `cash_price_card`
+- `lib/providers/{auth,cot_positions,crop_stats,elevator_locations,
+  farmer_reports,fertilizer_ticker,futures,grain_data_live,grain_data,
+  leaderboard,local_cash_prices,my_farm,notifications}_provider.dart`
+- `lib/models/{admin_role,cash_price,crop_plan,elevator_location,
+  farm_profile,farmer_price_report,fertilizer_ticker_models,
+  notification_model,pricing_models}.dart`
+- `lib/services/{grain_db,location_service,sound_service}` + `stub_web`,
+  `web_helper`
+
+Supabase:
+- Edge Functions: `fetch-cgc-grain-data`, `fetch-cot-data`,
+  `fetch-futures-prices`, `fetch-pdq-prices`, `fetch-statscan-crops`,
+  `fetch-usda-nass`, `pipeline-health`
+- Legacy migrations for wave-2 features (COT, futures, cash prices, my_farm
+  tables, elevator locations, farmer price reports) were deleted.
+
+The live tree is now ~34 Dart files. If a PR adds a screen under
+`lib/screens/**` or resurrects any of the deleted providers/models, it is
+re-introducing v2-scope work and should be bounced to a follow-up branch.
+
+### Security fix — **do not revert**
+
+Migration `20260424000100_enforce_anonymous_id_header.sql` rewrites the
+anonymous watch RPCs (`upsert_anonymous_post_watch`,
+`delete_anonymous_post_watch`, `get_anonymous_post_watches`) to pull the
+anonymous id from `current_setting('request.headers')::jsonb ->>
+'x-anonymous-id'` instead of trusting a caller-supplied parameter.
+
+The client now sends this header via
+`Supabase.initialize(headers: {'x-anonymous-id': anonymousId})` in
+`lib/main.dart`. Removing the header or going back to the parameter-based
+RPCs re-opens the identity-spoofing hole that this migration closed.
+
+### Reset Anonymous Identity
+
+`_IdentityMenuButton` in `lib/features/community/widgets/header_bar.dart`
+exposes a "Reset anonymous identity" action. It calls
+`AnonymousIdService.resetAnonymousId()` and `WatchedThreadsNotifier.clearAll()`.
+Keep both paths — rotating the UUID without clearing watches would leave
+stale watches attached to an abandoned identity.
+
+### Tooling guard rails
+
+`analysis_options.yaml` excludes two paths from the analyzer:
+
+- `agnonymous_beta/**` — nested legacy repo with its own `.git`, kept only
+  for history; its dashboard code will always fail lint against the current
+  tree.
+- `_test/**` — parked tests that reference widgets deleted in the relaunch
+  (`reputation_badge`, `notification_model`, `pricing_models`, glass
+  widgets). Rebuild coverage before un-parking.
+
+Do **not** drop these excludes without rebuilding the tests.
+
+### Vercel deploy — gotchas that cost us three failed builds
+
+The project is linked to Vercel project `agnonymous`
+(`prj_w6WXCPQ4TL0vj8ITJyFgThq3MYXT`, team `kyles-projects-d3ab6818`).
+Production domain: `agnonymous.buperac.com`.
+
+Prior deploys had `gitDirty: 1` — they were CLI uploads of the local
+working copy, so they accidentally shipped the local `.env` file and
+picked up the local exec bit on `build.sh`. A clean git fetch on the
+Vercel builder exposed two latent bugs:
+
+1. **`build.sh` exec bit.** Git tracked it as `100644`. Vercel's Linux
+   builder could not `spawn` a non-executable script (`ENOENT` at the
+   shebang). Fix: `git update-index --chmod=+x build.sh`. The file must
+   stay `100755` in git — re-check with `git ls-files --stage build.sh`.
+2. **`.env` listed as a Flutter asset.** `.env` is gitignored (local dev
+   secrets), so the Flutter build failed with
+   `No file or variants found for asset: .env`. Removed from
+   `pubspec.yaml`. Production reads Supabase credentials from
+   `--dart-define` passed by `build.sh`, and `main.dart` already wraps
+   `dotenv.load` in `try/catch` for this case. Do not add `.env` back to
+   the assets list.
+
+Other notes for future deploys:
+
+- `vercel.json` uses the legacy `builds` block with `@vercel/static-build`
+  pointing at `build.sh`. Vercel logs a warning that Project Settings are
+  ignored — that is expected, leave it.
+- The repo has both `firebase.json` and `vercel.json`. **Vercel is the
+  production target.** Do not deploy via `firebase deploy` without
+  discussing first.
+- `.vercel/project.json` is gitignored; recreate locally with the
+  `orgId`/`projectId` above if you need to deploy from a fresh checkout.

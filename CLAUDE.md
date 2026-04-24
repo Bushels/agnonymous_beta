@@ -23,6 +23,8 @@ Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
 | [docs/plans/2026-04-23-anonymous-board-relaunch.md](docs/plans/2026-04-23-anonymous-board-relaunch.md) | Relaunch status, decisions, audit checklist |
 | [AGENTS.md](AGENTS.md) | Mirror of this file for Codex sessions (keep synchronized) |
 
+**Before reverting anything, read `docs/plans/2026-04-23-anonymous-board-relaunch.md` → "2026-04-24 Ship Log".** It lists the files deleted in the relaunch (including everything under `lib/screens/**`), the header-enforcement security migration, the analyzer excludes, and the two Vercel deploy fixes (`build.sh` exec bit, removing `.env` from pubspec assets). Undoing any of those will either break production or re-introduce v2-scope code the product deliberately cut.
+
 Legacy documents below remain useful only for historical context. **Do not use them to justify adding pricing, dashboards, sign-in, or market intelligence back into v1.**
 
 ---
