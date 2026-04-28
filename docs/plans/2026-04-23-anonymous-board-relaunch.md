@@ -332,3 +332,117 @@ Other notes for future deploys:
   discussing first.
 - `.vercel/project.json` is gitignored; recreate locally with the
   `orgId`/`projectId` above if you need to deploy from a fresh checkout.
+
+## 2026-04-28 Ship Log — Donation Card
+
+Added a reader-support / tip-jar surface to the live board. Shipped to
+`agnonymous.buperac.com` (deployment `dpl_GzpwRPyqfvf...` →
+`agnonymous-9owzm9jxm-...vercel.app`).
+
+### What shipped
+
+New file: `lib/support_card.dart`. Defines `SupportCard`, `SupportHeaderLink`,
+`SupportConfig`, `SupportTier`. Wired up to PayPal.Me via `url_launcher`.
+
+- `SupportCard` sliver inserted in
+  `lib/features/community/screens/community_feed_screen.dart` between
+  `CategoryChips` and `PostFeedSliver` (top of the post feed, below the
+  trending section + chips).
+- `SupportHeaderLink` added to `_RoomHero`'s icon row, gated on
+  `MediaQuery.of(context).size.width >= 600`. Mobile viewports do not
+  show it. The legacy `HeaderBar` widget in
+  `lib/features/community/widgets/header_bar.dart` is dead code — never
+  imported anywhere. Do not add the support link there; the live header
+  is `_RoomHero`.
+
+Defaults baked into `SupportCard` (overridable via constructor):
+
+- Headline: "Being Agnonymous comes with risks."
+- Body: cease-and-desists / takedown threats / legal pressure framing.
+- Signoff: `~bushels` (right-aligned).
+- Tiers: `$5`, `$20`, `$50` → `paypal.me/buperac/{n}`. Custom amount →
+  `paypal.me/buperac`.
+
+PayPal links open with `LaunchMode.externalApplication`. Opening these
+links in an inline webview trips PayPal's anti-fraud checks and
+produces a degraded checkout — keep the external-application mode.
+
+Provider-agnostic by design: to swap PayPal for Stripe, Ko-fi, etc.,
+edit `SupportConfig.tiers` and `SupportConfig.customAmountUrl`. The
+widget code does not need to change.
+
+### New dependency
+
+`url_launcher: ^6.3.0` added to `pubspec.yaml`. `font_awesome_flutter`
+was already present at `^10.12.0`. Do not downgrade either.
+
+### Copy guidance — **no em/en dashes in user-facing strings**
+
+Em dashes (`—`) and en dashes (`–`) are reliable AI authorship tells.
+The anonymous-farmer voice this board cultivates is undermined when
+copy reads as machine-generated. Initial v1 of the donation card had a
+visible em dash in the body and was caught on first review. Replace any
+em dash with a period or comma and split the sentence. This rule
+applies to all user-visible strings in the relaunch codebase, not just
+the donation card.
+
+If you find yourself reaching for an em dash, that is a signal to
+shorten the sentence instead.
+
+### Two-Vercel-projects gotcha — read before deploying
+
+There are two separate Vercel projects under team
+`kyles-projects-d3ab6818`:
+
+| Project          | Source dir                              | Production URL                |
+| ---------------- | --------------------------------------- | ----------------------------- |
+| `agnonymous`     | `agnonymous_beta/` (this repo)          | `agnonymous.buperac.com`      |
+| `agnonymous_beta`| `agnonymous_beta/agnonymous_beta/` (nested legacy) | `agnonymousbeta.vercel.app` (SSO-gated) |
+
+The nested `agnonymous_beta/agnonymous_beta/` directory is the **legacy
+v2 codebase** the relaunch deliberately superseded. It has its own
+Vercel project, its own `vercel.json`, its own `pubspec.yaml` with
+older dep versions, and a monolithic `lib/main.dart`. It is **not**
+production. Do not edit code there expecting it to ship to
+`agnonymous.buperac.com`.
+
+Symptom that this caught us on the first donation-card pass:
+instructions referenced the nested path (`support_card.dart`,
+`SupportCard` insertion point in a `main.dart` SliverPersistentHeader,
+`HeaderBar` desktop branch) — none of those exist in the relaunch
+tree. The nested deploy went through fine but landed on
+`agnonymousbeta.vercel.app`, not the production domain. The port from
+nested → outer is documented in this section as the canonical reference.
+
+When in doubt about which project a deploy will hit, run
+`vercel project ls` and `cat .vercel/project.json`. The outer repo's
+`.vercel/project.json` should show
+`prj_w6WXCPQ4TL0vj8ITJyFgThq3MYXT`.
+
+### `vercel.json` is fine — do not switch to `outputDirectory`
+
+The current `vercel.json` (legacy `builds` block + `build.sh`) works.
+The 2026-04-28 production deploy did a full Vercel-side
+`flutter build web` in ~2m and shipped successfully. Earlier reports
+that `build.sh` was broken referred to the **nested** project's
+`vercel.json`, not this one. The relaunch's two fixes
+(`build.sh` exec bit, `.env` removed from pubspec assets) made the
+build path work. Leave `vercel.json` alone unless there is a concrete
+reason to switch.
+
+### Local nested `.env` cleanup
+
+A `.env` with the real Supabase URL + anon key was created at
+`agnonymous_beta/agnonymous_beta/.env` during the misrouted first deploy
+attempt. Both keys are public (the anon key is already in the
+production HTML and the URL is the project ref), so the exposure
+surface is zero, but the file is dev-only and gitignored. Remove it
+when you next clean up:
+
+```
+rm agnonymous_beta/agnonymous_beta/.env
+```
+
+The outer (production) repo does not need a `.env` file because `.env`
+was removed from `pubspec.yaml` assets in the relaunch — credentials
+flow through `--dart-define` instead.

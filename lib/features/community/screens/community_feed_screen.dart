@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../create_post_screen.dart';
+import '../../../support_card.dart';
 import '../board_theme.dart';
 import '../community_categories.dart';
 import '../providers/community_providers.dart';
@@ -142,6 +143,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   },
                 ),
               ),
+              const SliverToBoxAdapter(
+                child: SupportCard(),
+              ),
               PostFeedSliver(
                 searchQuery: searchQuery,
                 selectedCategory: selectedCategory,
@@ -201,6 +205,10 @@ class _RoomHeroState extends State<_RoomHero> {
     final room = widget.selectedCategory.isEmpty
         ? 'All Rooms'
         : '${widget.selectedCategory} Room';
+    // Mirrors the original "!isMediumScreen" desktop gate from the legacy
+    // HeaderBar — show the persistent Support affordance only on viewports
+    // wide enough to absorb an extra control without crowding mobile.
+    final isWideViewport = MediaQuery.of(context).size.width >= 600;
 
     return SafeArea(
       bottom: false,
@@ -282,6 +290,10 @@ class _RoomHeroState extends State<_RoomHero> {
                             ],
                           ),
                         ),
+                        if (isWideViewport) ...[
+                          const SupportHeaderLink(),
+                          const SizedBox(width: 4),
+                        ],
                         IconButton.filledTonal(
                           onPressed: () => setState(() => searchOpen = true),
                           style: IconButton.styleFrom(
