@@ -182,15 +182,6 @@
         }
 
         // Firebase is initialized by Flutter/Dart - no JS initialization needed
-
-        // Lazy load AdSense after a delay
-        setTimeout(function() {
-          var adsense = document.createElement('script');
-          adsense.async = true;
-          adsense.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958728286012509';
-          adsense.crossOrigin = 'anonymous';
-          document.head.appendChild(adsense);
-        }, 2000);
       });
     </script>
   </body>
