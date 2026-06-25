@@ -8,6 +8,11 @@ class AnonymousIdService {
   static const String defaultDisplayName = 'Anonymous Farmer';
   static String? _cachedId;
   static String? _cachedDisplayName;
+  static String? _authInitError;
+
+  /// Get the initialization/auth error if it occurred
+  static String? get authInitError => _authInitError;
+  static set authInitError(String? value) => _authInitError = value;
 
   /// Get the persistent anonymous ID for this device (Firebase Auth UID)
   static Future<String> getAnonymousId() async {
@@ -24,7 +29,9 @@ class AnonymousIdService {
       final userCredential = await auth.signInAnonymously();
       _cachedId = userCredential.user?.uid;
       if (_cachedId != null) return _cachedId!;
-    } catch (_) {}
+    } catch (e) {
+      _authInitError = e.toString();
+    }
 
     // Ultimate fallback using UUID
     final prefs = await SharedPreferences.getInstance();
@@ -48,7 +55,8 @@ class AnonymousIdService {
       await auth.signOut();
       final credential = await auth.signInAnonymously();
       _cachedId = credential.user?.uid;
-    } catch (_) {
+    } catch (e) {
+      _authInitError = e.toString();
       _cachedId = null;
     }
 

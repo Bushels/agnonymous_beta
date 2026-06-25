@@ -9,6 +9,7 @@ import 'firebase_options.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:agnonymous_beta/services/analytics_service.dart';
+import 'package:agnonymous_beta/services/anonymous_id_service.dart';
 
 import 'core/utils/globals.dart';
 import 'app/theme.dart';
@@ -36,12 +37,18 @@ Future<void> main() async {
 
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {
-      await auth.signInAnonymously();
-      logger.i('Signed in anonymously: ${auth.currentUser?.uid}');
+      try {
+        await auth.signInAnonymously();
+        logger.i('Signed in anonymously: ${auth.currentUser?.uid}');
+      } catch (e) {
+        AnonymousIdService.authInitError = e.toString();
+        logger.e('Anonymous sign-in failed during main: $e');
+      }
     } else {
       logger.i('Existing anonymous session found: ${auth.currentUser?.uid}');
     }
   } catch (e) {
+    AnonymousIdService.authInitError = e.toString();
     logger.e('Firebase Core/Auth initialization failed: $e');
   }
 

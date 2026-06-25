@@ -145,6 +145,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   },
                 ),
               ),
+              if (AnonymousIdService.authInitError != null)
+                SliverToBoxAdapter(
+                  child: _AuthErrorBanner(error: AnonymousIdService.authInitError!),
+                ),
               SliverPersistentHeader(
                 pinned: false,
                 delegate: TrendingSectionDelegate(),
@@ -995,6 +999,68 @@ class _SortChip extends StatelessWidget {
           label,
           style: BoardText.meta.copyWith(
             color: selected ? activeColor : BoardColors.muted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthErrorBanner extends StatelessWidget {
+  final String error;
+
+  const _AuthErrorBanner({required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.red.withValues(alpha: 0.3),
+              ),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.red,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Authentication Initialization Failed',
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'The app could not connect to Firebase Auth safely. Voting, comments, and post features will be blocked. \n\nError details: $error\n\nIf this is a custom domain, please ensure that this domain is added to the "Authorized domains" list in Firebase Console > Authentication > Settings.',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.white.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
