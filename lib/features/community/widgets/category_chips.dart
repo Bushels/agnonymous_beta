@@ -41,6 +41,18 @@ class CategoryChips extends StatelessWidget {
             onTap: () => onCategoryChanged(''),
           ),
           const SizedBox(width: 8),
+          _CategoryChip(
+            label: 'My Watches',
+            icon: '\u{1F441}\uFE0F',
+            selected: selectedCategory == 'watched',
+            onTap: () {
+              AnalyticsService.instance.logCategoryFilter(
+                category: 'watched',
+              );
+              onCategoryChanged('watched');
+            },
+          ),
+          const SizedBox(width: 8),
           ...boardCategories.map((category) {
             return Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -78,8 +90,11 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent =
-        label == 'All' ? BoardColors.green : boardCategoryColor(label);
+    final accent = label == 'All'
+        ? BoardColors.green
+        : (label == 'My Watches'
+            ? BoardColors.amber
+            : boardCategoryColor(label));
 
     return InkWell(
       borderRadius: BorderRadius.circular(999),

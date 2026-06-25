@@ -1,4 +1,5 @@
 // --- CONSTANTS ---
+// ignore: constant_identifier_names
 const List<String> PROVINCES_STATES = [
   // --- Canadian Provinces & Territories (alphabetical) ---
   'Alberta',

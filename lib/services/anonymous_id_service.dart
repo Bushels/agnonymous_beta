@@ -1,5 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 
 class AnonymousIdService {
@@ -9,10 +9,24 @@ class AnonymousIdService {
   static String? _cachedId;
   static String? _cachedDisplayName;
 
-  /// Get the persistent anonymous ID for this device
+  /// Get the persistent anonymous ID for this device (Firebase Auth UID)
   static Future<String> getAnonymousId() async {
     if (_cachedId != null) return _cachedId!;
 
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser != null) {
+      _cachedId = auth.currentUser!.uid;
+      return _cachedId!;
+    }
+
+    // Fallback: If auth isn't fully ready yet, try to sign in
+    try {
+      final userCredential = await auth.signInAnonymously();
+      _cachedId = userCredential.user?.uid;
+      if (_cachedId != null) return _cachedId!;
+    } catch (_) {}
+
+    // Ultimate fallback using UUID
     final prefs = await SharedPreferences.getInstance();
     String? id = prefs.getString(_storageKey);
 
@@ -27,29 +41,27 @@ class AnonymousIdService {
 
   /// Rotate the anonymous device ID.
   ///
-  /// Generates a fresh UUID, overwrites the stored value, clears the in-memory
-  /// cache, and pushes the new value into the already-initialized Supabase
-  /// client so subsequent RPCs send the new `x-anonymous-id` header.
-  /// Caller is responsible for wiping any local state keyed to the old id
-  /// (e.g. watched threads).
+  /// Signs out of the current anonymous user and signs in as a new one to generate a fresh UID.
   static Future<String> resetAnonymousId() async {
-    final newId = const Uuid().v4();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, newId);
-    _cachedId = newId;
-
-    // Update the live Supabase client header. SupabaseClient.headers is a
-    // mutable map captured at initialize(); mutating it takes effect on
-    // subsequent REST/RPC calls without a re-init.
+    final auth = FirebaseAuth.instance;
     try {
-      Supabase.instance.client.headers['x-anonymous-id'] = newId;
+      await auth.signOut();
+      final credential = await auth.signInAnonymously();
+      _cachedId = credential.user?.uid;
     } catch (_) {
-      // Supabase not initialized yet — nothing to update.
+      _cachedId = null;
     }
-    return newId;
+
+    if (_cachedId == null) {
+      final newId = const Uuid().v4();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_storageKey, newId);
+      _cachedId = newId;
+    }
+    return _cachedId!;
   }
 
-  /// Get the headers required for anonymous RLS policies
+  /// Get headers for backward compatibility
   static Future<Map<String, String>> getHeaders() async {
     final id = await getAnonymousId();
     return {

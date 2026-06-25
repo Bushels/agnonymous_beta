@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/community/providers/community_providers.dart';
 import '../features/community/screens/community_feed_screen.dart';
+import '../features/community/providers/auth_provider.dart';
 
 /// Thin wrapper kept so `runApp` has a single entry widget that can be swapped
 /// without touching main.dart. V1 has no auth flow — this used to listen for
@@ -13,6 +14,7 @@ class AuthWrapper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.read(paginatedPostsProvider);
+    ref.watch(authProvider); // Initialize auth and listen to changes
     return const MainNavigationShell();
   }
 }
@@ -22,6 +24,6 @@ class MainNavigationShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return const HomeScreen(initialCategory: 'Monette');
+    return const HomeScreen(initialCategory: '');
   }
 }

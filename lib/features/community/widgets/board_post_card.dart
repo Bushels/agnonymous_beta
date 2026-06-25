@@ -321,40 +321,96 @@ class _PostImageTile extends StatelessWidget {
     required this.aspectRatio,
   });
 
+  void _openLightbox(BuildContext context, String url) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.9),
+        pageBuilder: (context, _, __) {
+          return GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Stack(
+                children: [
+                  InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Hero(
+                        tag: url,
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Center(
+                              child: Text(
+                                'Failed to load image',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 16,
+                    right: 16,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: SizedBox(
-          width: width,
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                color: const Color(0xFF303229),
-                alignment: Alignment.center,
-                child: const FaIcon(
-                  FontAwesomeIcons.image,
-                  color: BoardColors.muted,
-                  size: 18,
-                ),
-              );
-            },
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                color: const Color(0xFF303229),
-                alignment: Alignment.center,
-                child: const SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-            },
+    return InkWell(
+      onTap: () => _openLightbox(context, imageUrl),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: AspectRatio(
+          aspectRatio: aspectRatio,
+          child: SizedBox(
+            width: width,
+            child: Hero(
+              tag: imageUrl,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: const Color(0xFF303229),
+                    alignment: Alignment.center,
+                    child: const FaIcon(
+                      FontAwesomeIcons.image,
+                      color: BoardColors.muted,
+                      size: 18,
+                    ),
+                  );
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: const Color(0xFF303229),
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),

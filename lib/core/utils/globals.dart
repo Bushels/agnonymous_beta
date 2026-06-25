@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:logger/logger.dart';
 
 // Conditional imports for web-only functionality
@@ -10,8 +12,10 @@ import 'dart:js_interop_unsafe';
 // Re-export pure utility functions from helpers.dart
 export 'package:agnonymous_beta/core/utils/helpers.dart';
 
-// --- SUPABASE CLIENT ---
-final supabase = Supabase.instance.client;
+// --- FIREBASE INSTANCES ---
+final firestore = FirebaseFirestore.instance;
+final firebaseAuth = FirebaseAuth.instance;
+final firebaseStorage = FirebaseStorage.instance;
 
 // --- LOGGER ---
 final logger = Logger(
@@ -21,7 +25,7 @@ final logger = Logger(
     lineLength: 80,
     colors: true,
     printEmojis: true,
-    printTime: false,
+    dateTimeFormat: DateTimeFormat.none,
   ),
   level: kReleaseMode ? Level.warning : Level.debug,
 );

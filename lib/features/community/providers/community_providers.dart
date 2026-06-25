@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/utils/globals.dart';
 import '../../../core/models/models.dart';
+import 'watch_provider.dart';
 
 // --- PAGINATION STATE ---
 // Category-specific Paginated State Class (immutable for efficient rebuilds)
@@ -13,6 +13,7 @@ class CategoryPostsState {
   final bool hasMore;
   final int currentPage;
   final String? error;
+  final DocumentSnapshot? lastDocument;
 
   const CategoryPostsState({
     this.posts = const [],
@@ -20,6 +21,7 @@ class CategoryPostsState {
     this.hasMore = true,
     this.currentPage = 0,
     this.error,
+    this.lastDocument,
   });
 
   CategoryPostsState copyWith({
@@ -28,6 +30,7 @@ class CategoryPostsState {
     bool? hasMore,
     int? currentPage,
     String? error,
+    DocumentSnapshot? lastDocument,
   }) {
     return CategoryPostsState(
       posts: posts ?? this.posts,
@@ -35,6 +38,7 @@ class CategoryPostsState {
       hasMore: hasMore ?? this.hasMore,
       currentPage: currentPage ?? this.currentPage,
       error: error ?? this.error,
+      lastDocument: lastDocument ?? this.lastDocument,
     );
   }
 }
@@ -66,20 +70,35 @@ class PaginatedPostsState {
 // Notifier for Category-specific Pagination Logic
 class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
   final int _pageSize = 50; // 50 posts per category for better coverage
-  RealtimeChannel? _postsChannel;
+  StreamSubscription? _postsSubscription;
 
   @override
   PaginatedPostsState build() {
     _initRealTime();
 
     // Defer loading to next microtask so state is initialized first
-    // This prevents the circular dependency error where loadPostsForCategory
-    // tries to access state before build() returns the initial state
     Future.microtask(() => loadPostsForCategory('all', isInitial: true));
+
+    // Listen to watches updates to keep the "watched" feed list reactive
+    ref.listen(watchedThreadsProvider, (previous, next) {
+      final watchedState = state.categoryStates['watched'];
+      if (watchedState != null) {
+        final watchedIds = next.threads.keys.toSet();
+        final updatedPosts =
+            watchedState.posts.where((p) => watchedIds.contains(p.id)).toList();
+        
+        final updatedCategoryStates =
+            Map<String, CategoryPostsState>.from(state.categoryStates);
+        updatedCategoryStates['watched'] = watchedState.copyWith(
+          posts: updatedPosts,
+        );
+        state = state.copyWith(categoryStates: updatedCategoryStates);
+      }
+    });
 
     // Clean up realtime subscription when disposed
     ref.onDispose(() {
-      _postsChannel?.unsubscribe();
+      _postsSubscription?.cancel();
     });
 
     return const PaginatedPostsState();
@@ -89,8 +108,9 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
       {bool isInitial = false, bool isRefresh = false}) async {
     final categoryState = state.getCategoryState(category);
 
-    if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh))
+    if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh)) {
       return;
+    }
 
     final pageToLoad = isRefresh || isInitial ? 0 : categoryState.currentPage;
 
@@ -104,22 +124,62 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
     try {
       logger.d('Fetching posts for category: $category, page: $pageToLoad');
 
-      var query = supabase.from('posts').select('*').neq('is_deleted',
-          true); // Filter out deleted posts (handles null as non-deleted)
+      Query query = firestore.collection('posts')
+          .where('is_deleted', isEqualTo: false);
 
       // Apply category filter for specific categories, skip for "all"
-      if (category != 'all') {
-        query = query.eq('category', category);
+      if (category == 'watched') {
+        final watchedIds = ref.read(watchedThreadsProvider).threads.keys.toList();
+        if (watchedIds.isEmpty) {
+          final updatedCategoryStates =
+              Map<String, CategoryPostsState>.from(state.categoryStates);
+          updatedCategoryStates[category] = CategoryPostsState(
+            posts: const [],
+            isLoading: false,
+            hasMore: false,
+            currentPage: 0,
+            lastDocument: null,
+          );
+          state = state.copyWith(categoryStates: updatedCategoryStates);
+          return;
+        }
+        final limitedIds = watchedIds.take(30).toList();
+        query = query.where(FieldPath.documentId, whereIn: limitedIds);
+      } else {
+        if (category != 'all') {
+          query = query.where('category', isEqualTo: category);
+        }
+        query = query.orderBy('created_at', descending: true);
       }
 
-      final data = await query
-          .order('created_at', ascending: false)
-          .range(pageToLoad * _pageSize, (pageToLoad + 1) * _pageSize - 1);
+      if (!isRefresh && !isInitial && categoryState.lastDocument != null && category != 'watched') {
+        query = query.startAfterDocument(categoryState.lastDocument!);
+      }
 
-      final newPosts = (data as List)
-          .map((map) => Post.fromMap(map))
-          .where((post) => !post.isDeleted) // Double-check filter in Dart
-          .toList();
+      final querySnapshot = await query.limit(_pageSize).get();
+      final docs = querySnapshot.docs;
+
+      final newPosts = docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        if (data['created_at'] is Timestamp) {
+          data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['edited_at'] is Timestamp) {
+          data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['deleted_at'] is Timestamp) {
+          data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['verified_at'] is Timestamp) {
+          data['verified_at'] = (data['verified_at'] as Timestamp).toDate().toIso8601String();
+        }
+        return Post.fromMap(data);
+      }).toList();
+
+      if (category == 'watched') {
+        newPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      }
 
       logger.d(
           'Category: $category, Page $pageToLoad: Loaded ${newPosts.length} posts');
@@ -146,8 +206,9 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
       final newCategoryState = categoryState.copyWith(
         posts: updatedPosts,
         isLoading: false,
-        hasMore: newPosts.length == _pageSize,
+        hasMore: category == 'watched' ? false : newPosts.length == _pageSize,
         currentPage: pageToLoad + 1,
+        lastDocument: docs.isNotEmpty ? docs.last : null,
       );
 
       final finalCategoryStates =
@@ -193,53 +254,72 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
   }
 
   void _initRealTime() {
-    // Subscribe to new posts being inserted
-    _postsChannel = supabase
-        .channel('new_posts')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'posts',
-          callback: (payload) {
-            logger.d('New post inserted, refreshing categories');
-            // Refresh all loaded categories for new posts
-            for (final category in state.categoryStates.keys) {
-              refreshCategory(category);
-            }
-          },
-        )
-        // Subscribe to updates on posts (e.g., comment_count or vote_count changes)
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'posts',
-          callback: (payload) {
-            logger.d('Real-time post update received');
-            final newMap = payload.newRecord;
-            final updatedPost = Post.fromMap(newMap);
-            logger.d('Updating post ${updatedPost.id}');
+    _postsSubscription = firestore
+        .collection('posts')
+        .where('is_deleted', isEqualTo: false)
+        .orderBy('created_at', descending: true)
+        .limit(_pageSize)
+        .snapshots()
+        .listen((snapshot) {
+      logger.d('Real-time post update received from Firestore');
 
-            // Update the post in all loaded category states where it exists
-            final updatedCategoryStates =
-                Map<String, CategoryPostsState>.from(state.categoryStates);
-            for (final entry in updatedCategoryStates.entries) {
-              final cat = entry.key;
-              final catState = entry.value;
-              final postIndex =
-                  catState.posts.indexWhere((p) => p.id == updatedPost.id);
-              if (postIndex != -1) {
-                final updatedPosts = List<Post>.from(catState.posts);
-                updatedPosts[postIndex] =
-                    updatedPost; // Replace with updated post
-                updatedCategoryStates[cat] =
-                    catState.copyWith(posts: updatedPosts);
-                logger.d('Updated post in category "$cat"');
-              }
-            }
-            state = state.copyWith(categoryStates: updatedCategoryStates);
-          },
-        )
-        .subscribe();
+      final newPosts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        if (data['created_at'] is Timestamp) {
+          data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['edited_at'] is Timestamp) {
+          data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['deleted_at'] is Timestamp) {
+          data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+        }
+        if (data['verified_at'] is Timestamp) {
+          data['verified_at'] = (data['verified_at'] as Timestamp).toDate().toIso8601String();
+        }
+        return Post.fromMap(data);
+      }).toList();
+
+      final updatedCategoryStates =
+          Map<String, CategoryPostsState>.from(state.categoryStates);
+
+      // Update "all" category
+      final allState = state.getCategoryState('all');
+      updatedCategoryStates['all'] = allState.copyWith(
+        posts: newPosts,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
+
+      // Update other loaded categories
+      for (final entry in updatedCategoryStates.entries) {
+        final cat = entry.key;
+        if (cat == 'all') continue;
+
+        final catState = entry.value;
+        final List<Post> filteredNewPosts;
+        if (cat == 'watched') {
+          final watchedIds = ref.read(watchedThreadsProvider).threads.keys.toSet();
+          filteredNewPosts = newPosts.where((p) => watchedIds.contains(p.id)).toList();
+        } else {
+          filteredNewPosts = newPosts.where((p) => p.category == cat).toList();
+        }
+
+        // Merge into category
+        final mergedPostsMap = {for (var p in filteredNewPosts) p.id: p};
+        final remainingPosts = catState.posts.where((p) => !mergedPostsMap.containsKey(p.id));
+        final updatedCatPosts = [...filteredNewPosts, ...remainingPosts];
+        updatedCatPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        updatedCategoryStates[cat] = catState.copyWith(
+          posts: updatedCatPosts,
+        );
+      }
+
+      state = state.copyWith(categoryStates: updatedCategoryStates);
+    }, onError: (e) {
+      logger.e('Error in real-time posts subscription: $e');
+    });
   }
 }
 
@@ -276,165 +356,108 @@ final postsProvider = StreamProvider<List<Post>>((ref) {
 
 final commentsProvider =
     StreamProvider.family<List<Comment>, String>((ref, postId) {
-  final stream = supabase
-      .from('comments')
-      .stream(primaryKey: ['id'])
-      .eq('post_id', postId)
-      .order('created_at', ascending: true);
+  final stream = firestore
+      .collection('comments')
+      .where('post_id', isEqualTo: postId)
+      .where('is_deleted', isEqualTo: false)
+      .orderBy('created_at', descending: false)
+      .snapshots();
 
-  return stream.map((listOfMaps) {
-    return listOfMaps
-        .map((map) => Comment.fromMap(map))
-        .where((comment) => !comment.isDeleted) // Filter out deleted comments
-        .toList();
+  return stream.map((snapshot) {
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id;
+      if (data['created_at'] is Timestamp) {
+        data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+      }
+      if (data['deleted_at'] is Timestamp) {
+        data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+      }
+      if (data['edited_at'] is Timestamp) {
+        data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+      }
+      return Comment.fromMap(data);
+    }).toList();
   });
 });
 
 final voteStatsProvider =
     StreamProvider.family<VoteStats, String>((ref, postId) {
-  final controller = StreamController<VoteStats>();
-
-  Future<void> fetchStats() async {
-    try {
-      final response = await supabase
-          .rpc('get_post_vote_stats', params: {'post_id_in': postId});
-      Map<String, dynamic> dataMap = {};
-      if (response is List && response.isNotEmpty) {
-        dataMap = response[0] as Map<String, dynamic>;
-      } else if (response is Map<String, dynamic>) {
-        dataMap = response;
-      }
-      controller.add(VoteStats.fromMap(dataMap));
-    } catch (e) {
-      if (const bool.fromEnvironment('dart.vm.product') == false) {
-        debugPrint('Error fetching vote stats: $e');
-      }
-      controller.add(VoteStats(
-          thumbsUpVotes: 0,
-          partialVotes: 0,
-          thumbsDownVotes: 0,
-          funnyVotes: 0));
+  final stream = firestore.collection('posts').doc(postId).snapshots();
+  return stream.map((snapshot) {
+    if (!snapshot.exists) {
+      return VoteStats(
+        thumbsUpVotes: 0,
+        partialVotes: 0,
+        thumbsDownVotes: 0,
+        funnyVotes: 0,
+      );
     }
-  }
-
-  fetchStats();
-
-  final channel = supabase
-      .channel('public:truth_votes:$postId')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'truth_votes',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'post_id',
-          value: postId,
-        ),
-        callback: (payload) {
-          fetchStats();
-        },
-      )
-      .subscribe();
-
-  ref.onDispose(() {
-    channel.unsubscribe();
-    controller.close();
+    final data = snapshot.data() as Map<String, dynamic>;
+    return VoteStats(
+      thumbsUpVotes: data['thumbs_up_count'] ?? 0,
+      partialVotes: data['partial_count'] ?? 0,
+      thumbsDownVotes: data['thumbs_down_count'] ?? 0,
+      funnyVotes: data['funny_count'] ?? 0,
+    );
   });
-
-  return controller.stream;
 });
 
 final globalStatsProvider = StreamProvider<GlobalStats>((ref) {
-  final controller = StreamController<GlobalStats>();
-
-  Future<void> fetchStats() async {
-    try {
-      final response = await supabase.rpc('get_global_stats');
-      Map<String, dynamic> dataMap = {};
-      if (response is List && response.isNotEmpty) {
-        dataMap = response[0] as Map<String, dynamic>;
-      } else if (response is Map<String, dynamic>) {
-        dataMap = response;
-      }
-      final stats = GlobalStats.fromMap(dataMap);
-      logger.d(
-          'Global Stats - Posts: ${stats.totalPosts}, Votes: ${stats.totalVotes}, Comments: ${stats.totalComments}');
-      controller.add(stats);
-    } catch (e) {
-      logger.w('Error fetching global stats: $e');
-      controller
-          .add(GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0));
+  final stream = firestore.collection('stats').doc('global').snapshots();
+  return stream.map((snapshot) {
+    if (!snapshot.exists) {
+      return GlobalStats(totalPosts: 0, totalVotes: 0, totalComments: 0);
     }
-  }
-
-  fetchStats();
-
-  // Listen to all table changes
-  final channel = supabase
-      .channel('global_stats_changes')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'posts',
-        callback: (payload) => fetchStats(),
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'truth_votes',
-        callback: (payload) => fetchStats(),
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'comments',
-        callback: (payload) => fetchStats(),
-      )
-      .subscribe();
-
-  ref.onDispose(() {
-    channel.unsubscribe();
-    controller.close();
+    final data = snapshot.data() as Map<String, dynamic>;
+    return GlobalStats(
+      totalPosts: data['total_posts'] ?? 0,
+      totalVotes: data['total_votes'] ?? 0,
+      totalComments: data['total_comments'] ?? 0,
+    );
   });
-
-  return controller.stream;
 });
 
 final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
-  // This will cause the provider to rebuild when posts change
-  ref.watch(postsProvider);
+  // Watch posts to recalculate when posts are updated
+  final paginatedState = ref.watch(paginatedPostsProvider);
+  final posts = paginatedState.getCategoryState('all').posts;
 
-  try {
-    final response = await supabase.rpc('get_trending_stats');
-
-    logger.d('Fetched trending stats');
-
-    if (response == null) {
-      return TrendingStats(
-        trendingCategory: 'General',
-        mostPopularPostTitle: 'No posts yet',
-      );
-    }
-
-    // Handle the response properly
-    Map<String, dynamic> data;
-    if (response is List && response.isNotEmpty) {
-      data = response[0] as Map<String, dynamic>;
-    } else if (response is Map<String, dynamic>) {
-      data = response;
-    } else {
-      return TrendingStats(
-        trendingCategory: 'General',
-        mostPopularPostTitle: 'No posts yet',
-      );
-    }
-
-    return TrendingStats.fromMap(data);
-  } catch (e) {
-    logger.w('Error fetching trending stats: $e');
+  if (posts.isEmpty) {
     return TrendingStats(
       trendingCategory: 'General',
       mostPopularPostTitle: 'No posts yet',
     );
   }
+
+  // Calculate trending category
+  final categoryCounts = <String, int>{};
+  for (final post in posts) {
+    categoryCounts[post.category] = (categoryCounts[post.category] ?? 0) + 1;
+  }
+
+  var trendingCategory = 'General';
+  var maxCategoryCount = 0;
+  categoryCounts.forEach((category, occurrences) {
+    if (occurrences > maxCategoryCount) {
+      maxCategoryCount = occurrences;
+      trendingCategory = category;
+    }
+  });
+
+  // Calculate most popular post (highest comments + votes)
+  Post? mostPopularPost;
+  var maxScore = -1;
+  for (final post in posts) {
+    final score = post.commentCount + post.voteCount;
+    if (score > maxScore) {
+      maxScore = score;
+      mostPopularPost = post;
+    }
+  }
+
+  return TrendingStats(
+    trendingCategory: trendingCategory,
+    mostPopularPostTitle: mostPopularPost?.title ?? 'No posts yet',
+  );
 });

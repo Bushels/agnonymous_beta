@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Rules for user profiles
+    match /user_profiles/{userId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // Rules for posts
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() 
+                    && request.resource.data.user_id == request.auth.uid
+                    && request.resource.data.is_deleted == false;
+      allow update: if isAuthenticated() 
+                    && (
+                      // Allow author to update content (edit/append), is_deleted (soft delete), etc.
+                      resource.data.user_id == request.auth.uid
+                      // Allow anyone to update vote or comment counts (interactions)
+                      || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count', 'partial_count', 'funny_count'])
+                    );
+    }
+
+    // Rules for comments
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() 
+                    && request.resource.data.anonymous_user_id == request.auth.uid;
+    }
+
+    // Rules for votes
+    match /votes/{voteId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && voteId.matches('^' + request.auth.uid + '_.*');
+    }
+
+    // Rules for watches
+    match /watches/{watchId} {
+      allow read, write: if isAuthenticated() && watchId.matches('^' + request.auth.uid + '_.*');
+    }
+
+    // Rules for global/trending stats
+    match /stats/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}

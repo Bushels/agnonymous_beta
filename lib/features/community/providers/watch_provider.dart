@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/models/post.dart';
 import '../../../core/utils/globals.dart';
 import '../../../services/anonymous_id_service.dart';
+import 'auth_provider.dart';
 
 class WatchedThread {
   final String postId;
@@ -128,6 +129,15 @@ class WatchedThreadsNotifier extends Notifier<WatchedThreadsState> {
   @override
   WatchedThreadsState build() {
     Future.microtask(_load);
+    
+    // Listen for auth state changes to reload watches and merge them
+    ref.listen(authProvider, (previous, next) {
+      if (previous?.user?.uid != next.user?.uid) {
+        logger.d('Auth state changed, reloading remote watches');
+        _loadRemoteWatches();
+      }
+    });
+
     return const WatchedThreadsState();
   }
 
@@ -258,16 +268,15 @@ class WatchedThreadsNotifier extends Notifier<WatchedThreadsState> {
   Future<void> _loadRemoteWatches() async {
     try {
       final anonymousId = await AnonymousIdService.getAnonymousId();
-      final response = await supabase.rpc(
-        'get_anonymous_post_watches',
-        params: {'anonymous_user_id_in': anonymousId},
-      );
-      if (response is! List) return;
+      final snapshot = await firestore
+          .collection('watches')
+          .where('user_id', isEqualTo: anonymousId)
+          .get();
 
       final merged = Map<String, WatchedThread>.from(state.threads);
-      for (final item in response) {
-        final thread =
-            WatchedThread.fromJson(Map<String, dynamic>.from(item as Map));
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final thread = WatchedThread.fromJson(data);
         final existing = merged[thread.postId];
         if (existing == null || thread.updatedAt.isAfter(existing.updatedAt)) {
           merged[thread.postId] = thread;
@@ -284,15 +293,12 @@ class WatchedThreadsNotifier extends Notifier<WatchedThreadsState> {
   Future<void> _syncWatch(WatchedThread watchedThread) async {
     try {
       final anonymousId = await AnonymousIdService.getAnonymousId();
-      await supabase.rpc(
-        'upsert_anonymous_post_watch',
-        params: {
-          'anonymous_user_id_in': anonymousId,
-          'post_id_in': watchedThread.postId,
-          'last_seen_comment_count_in': watchedThread.lastSeenCommentCount,
-          'notifications_enabled_in': watchedThread.notificationsEnabled,
-        },
-      );
+      final data = watchedThread.toJson();
+      data['user_id'] = anonymousId;
+      await firestore
+          .collection('watches')
+          .doc('${anonymousId}_${watchedThread.postId}')
+          .set(data);
     } catch (error) {
       logger.d('Remote watch sync skipped: $error');
     }
@@ -301,13 +307,10 @@ class WatchedThreadsNotifier extends Notifier<WatchedThreadsState> {
   Future<void> _syncUnwatch(String postId) async {
     try {
       final anonymousId = await AnonymousIdService.getAnonymousId();
-      await supabase.rpc(
-        'delete_anonymous_post_watch',
-        params: {
-          'anonymous_user_id_in': anonymousId,
-          'post_id_in': postId,
-        },
-      );
+      await firestore
+          .collection('watches')
+          .doc('${anonymousId}_$postId')
+          .delete();
     } catch (error) {
       logger.d('Remote unwatch sync skipped: $error');
     }

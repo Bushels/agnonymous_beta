@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "863523401515",
+    "project_id": "agnonymous-beta-kyle-2005b",
+    "storage_bucket": "agnonymous-beta-kyle-2005b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:863523401515:android:5b7873b89b5e25d2c31f6e",
+        "android_client_info": {
+          "package_name": "com.example.agnonymous_beta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLnP27KypE6d1M1f_BrjzYS2LuryPwNj4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

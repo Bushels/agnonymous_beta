@@ -3,13 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../create_post_screen.dart';
-import '../../../support_card.dart';
 import '../board_theme.dart';
 import '../community_categories.dart';
 import '../providers/community_providers.dart';
 import '../widgets/post_feed_sliver.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/trending_section.dart';
+import '../widgets/ambient_background.dart';
+import '../../../services/anonymous_id_service.dart';
+import '../providers/watch_provider.dart';
+import '../../../core/utils/globals.dart';
+import '../providers/auth_provider.dart';
+import '../../../models/user_profile.dart';
+import '../widgets/auth_dialog.dart';
 
 // --- HOME SCREEN ---
 class HomeScreen extends ConsumerStatefulWidget {
@@ -93,18 +99,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: BoardColors.prairie,
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              BoardColors.prairie,
-              BoardColors.soil,
-              Color(0xFF11130F),
-            ],
-          ),
-        ),
+      body: AmbientBackground(
         child: RefreshIndicator(
           color: BoardColors.monette,
           onRefresh: _refreshCurrentCategory,
@@ -126,11 +121,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
               SliverPersistentHeader(
-                pinned: true,
+                pinned: false,
                 delegate: TrendingSectionDelegate(),
               ),
-              SliverToBoxAdapter(
-                child: CategoryChips(
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: CategoryChipsDelegate(
                   selectedCategory: selectedCategory,
                   onCategoryChanged: (category) {
                     setState(() {
@@ -142,9 +138,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     });
                   },
                 ),
-              ),
-              const SliverToBoxAdapter(
-                child: SupportCard(),
               ),
               PostFeedSliver(
                 searchQuery: searchQuery,
@@ -205,10 +198,6 @@ class _RoomHeroState extends State<_RoomHero> {
     final room = widget.selectedCategory.isEmpty
         ? 'All Rooms'
         : '${widget.selectedCategory} Room';
-    // Mirrors the original "!isMediumScreen" desktop gate from the legacy
-    // HeaderBar — show the persistent Support affordance only on viewports
-    // wide enough to absorb an extra control without crowding mobile.
-    final isWideViewport = MediaQuery.of(context).size.width >= 600;
 
     return SafeArea(
       bottom: false,
@@ -290,10 +279,7 @@ class _RoomHeroState extends State<_RoomHero> {
                             ],
                           ),
                         ),
-                        if (isWideViewport) ...[
-                          const SupportHeaderLink(),
-                          const SizedBox(width: 4),
-                        ],
+
                         IconButton.filledTonal(
                           onPressed: () => setState(() => searchOpen = true),
                           style: IconButton.styleFrom(
@@ -328,6 +314,8 @@ class _RoomHeroState extends State<_RoomHero> {
                                 ),
                           tooltip: 'Refresh board',
                         ),
+                        const SizedBox(width: 8),
+                        const _IdentityMenuButton(),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -420,5 +408,498 @@ class _LiveDot extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _IdentityMenuButton extends ConsumerWidget {
+  const _IdentityMenuButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final isSignedIn = ref.watch(isSignedInProvider);
+    final profile = auth.profile;
+
+    final Widget menuButtonIcon;
+    final Color buttonColor;
+    final Color buttonBg;
+
+    if (isSignedIn && profile != null) {
+      menuButtonIcon = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(profile.levelInfo.emoji, style: const TextStyle(fontSize: 14)),
+          const SizedBox(width: 5),
+          const FaIcon(FontAwesomeIcons.circleCheck, size: 10, color: BoardColors.sky),
+        ],
+      );
+      buttonColor = BoardColors.sky;
+      buttonBg = BoardColors.sky.withValues(alpha: 0.16);
+    } else {
+      menuButtonIcon = const FaIcon(FontAwesomeIcons.circleUser, size: 16);
+      buttonColor = BoardColors.muted;
+      buttonBg = BoardColors.clay;
+    }
+
+    return PopupMenuButton<String>(
+      tooltip: 'Identity options',
+      offset: const Offset(0, 48),
+      color: const Color(0xFF25271F), // BoardColors.paper
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: BoardColors.line),
+      ),
+      onSelected: (value) async {
+        if (value == 'reset') {
+          await _showResetDialog(context, ref);
+        } else if (value == 'signin') {
+          _showAuthDialog(context, ref);
+        } else if (value == 'profile' && profile != null) {
+          _showProfileDialog(context, ref, profile);
+        } else if (value == 'signout') {
+          await ref.read(authProvider.notifier).signOut();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Returned to anonymous mode.'),
+                backgroundColor: BoardColors.green,
+              ),
+            );
+          }
+        }
+      },
+      itemBuilder: (context) => isSignedIn
+          ? [
+              PopupMenuItem<String>(
+                value: 'profile',
+                child: Row(
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.user,
+                      size: 14,
+                      color: BoardColors.sky,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'My Profile',
+                      style: TextStyle(color: BoardColors.ink),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'signout',
+                child: Row(
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.arrowRightFromBracket,
+                      size: 14,
+                      color: Colors.red.shade400,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Sign Out',
+                      style: TextStyle(color: BoardColors.ink),
+                    ),
+                  ],
+                ),
+              ),
+            ]
+          : [
+              PopupMenuItem<String>(
+                value: 'signin',
+                child: Row(
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.userPlus,
+                      size: 14,
+                      color: BoardColors.green,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Sign In / Register',
+                      style: TextStyle(color: BoardColors.ink),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'reset',
+                child: Row(
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.arrowRotateLeft,
+                      size: 14,
+                      color: BoardColors.amber,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Reset anonymous identity',
+                      style: TextStyle(color: BoardColors.ink),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+      child: IgnorePointer(
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: buttonBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: buttonColor.withValues(alpha: 0.28)),
+          ),
+          alignment: Alignment.center,
+          child: menuButtonIcon,
+        ),
+      ),
+    );
+  }
+
+  void _showAuthDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AuthDialog(ref: ref),
+    );
+  }
+
+  void _showProfileDialog(BuildContext context, WidgetRef ref, UserProfile profile) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _ProfileDialog(profile: profile),
+    );
+  }
+
+  Future<void> _showResetDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orange.shade400,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Reset Identity?',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        content: const Text(
+          'A new anonymous device id will be generated. Your watched threads '
+          'and any device-only history will be cleared. Posts, comments, and '
+          'votes already published remain on the board.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text(
+              'Reset',
+              style: TextStyle(
+                color: Color(0xFF84CC16),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await AnonymousIdService.resetAnonymousId();
+      await ref.read(watchedThreadsProvider.notifier).clearAll();
+    } catch (e) {
+      logger.w('Anonymous id reset failed: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reset failed. Try again in a moment.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Anonymous identity reset.'),
+          backgroundColor: Color(0xFF84CC16),
+        ),
+      );
+    }
+  }
+}
+
+
+
+class _ProfileDialog extends StatelessWidget {
+  final UserProfile profile;
+  const _ProfileDialog({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1F2937),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 440),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.grey),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            
+            // Avatar Level Circle
+            Container(
+              height: 76,
+              width: 76,
+              decoration: BoxDecoration(
+                color: BoardColors.sky.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: BoardColors.sky.withValues(alpha: 0.3), width: 3),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                profile.levelInfo.emoji,
+                style: const TextStyle(fontSize: 36),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Username with Verified Badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  profile.username,
+                  style: GoogleFonts.outfit(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const FaIcon(
+                  FontAwesomeIcons.circleCheck,
+                  size: 16,
+                  color: BoardColors.sky,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            // Level Title Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: BoardColors.clay,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: BoardColors.line),
+              ),
+              child: Text(
+                'Level ${profile.reputationLevel}: ${profile.levelInfo.title}',
+                style: GoogleFonts.inter(
+                  color: BoardColors.sky,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Reputation & Progress
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Reputation Points',
+                      style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
+                    ),
+                    Text(
+                      '${profile.reputationPoints} Points',
+                      style: GoogleFonts.outfit(
+                        color: BoardColors.sky,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 10,
+                    value: profile.progressToNextLevel,
+                    backgroundColor: const Color(0xFF374151),
+                    valueColor: const AlwaysStoppedAnimation<Color>(BoardColors.sky),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${profile.pointsToNextLevel} points to Level ${profile.reputationLevel + 1} (${ReputationLevelInfo.fromLevel(profile.reputationLevel + 1).title})',
+                  style: GoogleFonts.inter(color: Colors.grey, fontSize: 11),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Stats row
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _statItem('Posts', profile.postCount),
+                  Container(height: 24, width: 1, color: Colors.white12),
+                  _statItem('Comments', profile.commentCount),
+                  Container(height: 24, width: 1, color: Colors.white12),
+                  _statItem('Votes', profile.voteCount),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Perks Unlocked Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E2633).withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: BoardColors.sky.withValues(alpha: 0.15)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Unlocked Perks:',
+                    style: GoogleFonts.inter(
+                      color: BoardColors.sky,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.bolt, color: BoardColors.sky, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Active Vote Weight: ${profile.voteWeight.toStringAsFixed(1)}x',
+                        style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  ...profile.levelInfo.perks.map((perk) => Padding(
+                        padding: const EdgeInsets.only(top: 6.0),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.bolt, color: BoardColors.sky, size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                perk,
+                                style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statItem(String label, int count) {
+    return Column(
+      children: [
+        Text(
+          count.toString(),
+          style: GoogleFonts.outfit(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: GoogleFonts.inter(color: Colors.grey, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
+  final String selectedCategory;
+  final Function(String) onCategoryChanged;
+
+  const CategoryChipsDelegate({
+    required this.selectedCategory,
+    required this.onCategoryChanged,
+  });
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return CategoryChips(
+      selectedCategory: selectedCategory,
+      onCategoryChanged: onCategoryChanged,
+    );
+  }
+
+  @override
+  double get maxExtent => 62.0;
+
+  @override
+  double get minExtent => 62.0;
+
+  @override
+  bool shouldRebuild(covariant CategoryChipsDelegate oldDelegate) {
+    return oldDelegate.selectedCategory != selectedCategory;
   }
 }

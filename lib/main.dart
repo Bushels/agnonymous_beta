@@ -1,14 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:agnonymous_beta/services/anonymous_id_service.dart';
 import 'package:agnonymous_beta/services/analytics_service.dart';
 
 import 'core/utils/globals.dart';
@@ -20,6 +19,7 @@ export 'core/utils/globals.dart';
 export 'core/models/models.dart';
 export 'app/constants.dart';
 export 'features/community/providers/community_providers.dart';
+export 'features/community/providers/auth_provider.dart';
 export 'app/navigation_shell.dart' show MainNavigationShell, AuthWrapper;
 export 'features/community/screens/community_feed_screen.dart' show HomeScreen;
 export 'features/community/widgets/post_card.dart' show PostCard;
@@ -27,80 +27,32 @@ export 'features/community/widgets/post_card.dart' show PostCard;
 // --- MAIN APP ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final anonymousId = await AnonymousIdService.getAnonymousId();
-
-  // === STEP 1: Resolve Supabase credentials synchronously (no network calls) ===
-  String? supabaseUrl;
-  String? supabaseAnonKey;
-
-  // Try JavaScript window.ENV first (Firebase hosting)
-  if (kIsWeb) {
-    supabaseUrl = getWebEnvironmentVariable('SUPABASE_URL');
-    supabaseAnonKey = getWebEnvironmentVariable('SUPABASE_ANON_KEY');
-  }
-
-  // Try dart-define (production)
-  if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
-    supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-    supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
-  }
-
-  // Try .env file only if still missing (development only, adds latency)
-  if (supabaseUrl?.isEmpty != false || supabaseAnonKey?.isEmpty != false) {
-    try {
-      await dotenv.load(fileName: ".env");
-      supabaseUrl = dotenv.env['SUPABASE_URL'];
-      supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
-    } catch (e) {
-      // .env file not found, which is okay for production builds
-    }
-  }
-
-  if (supabaseUrl == null ||
-      supabaseUrl.isEmpty ||
-      supabaseAnonKey == null ||
-      supabaseAnonKey.isEmpty) {
-    throw Exception(
-        'Supabase credentials not found. Please check environment variables or .env file.');
-  }
-
-  // === STEP 2: Initialize Firebase, Supabase, and MobileAds in PARALLEL ===
+    // === STEP 1: Initialize Firebase and Anonymous Auth ===
   try {
-    final futures = <Future<void>>[];
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    logger.i('Firebase initialized successfully');
 
-    // Firebase initialization
-    futures.add(Firebase.initializeApp().then((_) {
-      logger.i('Firebase initialized successfully');
-    }).catchError((e) {
-      logger.w(
-          'Firebase initialization failed (may already be initialized in web): $e');
-    }));
-
-    // Supabase initialization
-    // Headers: x-anonymous-id is the server-side source of truth for the
-    // anonymous watch RPCs. See migration 20260424000100.
-    futures.add(Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-      headers: {'x-anonymous-id': anonymousId},
-    ).then((_) {
-      logger.i('Supabase initialized successfully');
-    }));
-
-    // MobileAds initialization (non-web only)
-    if (!kIsWeb) {
-      futures.add(MobileAds.instance.initialize().then((_) {
-        logger.i('Mobile Ads initialized successfully');
-      }).catchError((e) {
-        logger.w('Mobile Ads initialization failed: $e');
-      }));
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+      logger.i('Signed in anonymously: ${auth.currentUser?.uid}');
+    } else {
+      logger.i('Existing anonymous session found: ${auth.currentUser?.uid}');
     }
-
-    // Wait for all to complete in parallel
-    await Future.wait(futures);
   } catch (e) {
-    logger.e('Initialization error: $e');
-    rethrow;
+    logger.e('Firebase Core/Auth initialization failed: $e');
+  }
+
+  // === STEP 2: Initialize MobileAds in parallel (non-web only) ===
+  if (!kIsWeb) {
+    try {
+      await MobileAds.instance.initialize();
+      logger.i('Mobile Ads initialized successfully');
+    } catch (e) {
+      logger.w('Mobile Ads initialization failed: $e');
+    }
   }
 
   // === STEP 3: Set up Crashlytics AFTER Firebase is ready ===
@@ -129,14 +81,6 @@ Future<void> main() async {
 
   try {
     logger.d('Initialization complete, starting app');
-
-    // Check for existing session (don't auto-sign in - let AuthWrapper handle login flow)
-    final session = supabase.auth.currentSession;
-    if (session != null) {
-      logger.d('Found existing session for user: ${session.user.id}');
-    } else {
-      logger.d('No existing session - continuing as anonymous board reader');
-    }
 
     // Set up custom error widget for render errors
     ErrorWidget.builder = (FlutterErrorDetails details) {

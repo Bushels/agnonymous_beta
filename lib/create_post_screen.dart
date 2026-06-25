@@ -6,7 +6,9 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'core/utils/globals.dart';
 import 'core/models/post.dart';
@@ -18,6 +20,9 @@ import 'services/anonymous_id_service.dart';
 import 'features/community/board_theme.dart';
 import 'features/community/community_categories.dart';
 import 'features/community/providers/watch_provider.dart';
+import 'features/community/widgets/posting_as_sheet.dart';
+import 'features/community/providers/auth_provider.dart';
+import 'features/community/widgets/auth_dialog.dart';
 
 class _PendingPostImage {
   final XFile file;
@@ -26,18 +31,6 @@ class _PendingPostImage {
   const _PendingPostImage({
     required this.file,
     required this.previewBytes,
-  });
-}
-
-class _AliasSelection {
-  final String alias;
-  final bool hasCustomAlias;
-  final bool remember;
-
-  const _AliasSelection({
-    required this.alias,
-    required this.hasCustomAlias,
-    required this.remember,
   });
 }
 
@@ -66,6 +59,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   String _postingAlias = AnonymousIdService.defaultDisplayName;
   bool _hasCustomPostingAlias = false;
   bool _isLoading = false;
+  bool _isAnonymousPost = true;
 
   @override
   void initState() {
@@ -76,14 +70,99 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     _selectedCategory =
         isKnownCategory ? widget.initialCategory : defaultBoardCategory;
     AnalyticsService.instance.logScreenView(screenName: 'CreatePostScreen');
-    _loadPostingAlias();
+    _loadPostingAlias().then((_) => _checkAndLoadDraft());
   }
 
   @override
   void dispose() {
+    _titleController.removeListener(_saveDraft);
+    _contentController.removeListener(_saveDraft);
     _titleController.dispose();
     _contentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('post_draft_title', _titleController.text);
+      await prefs.setString('post_draft_content', _contentController.text);
+      await prefs.setString('post_draft_category', _selectedCategory);
+      if (_selectedMonetteArea != null) {
+        await prefs.setString('post_draft_monette_area', _selectedMonetteArea!);
+      } else {
+        await prefs.remove('post_draft_monette_area');
+      }
+    } catch (e) {
+      logger.e('Failed to save post draft: $e');
+    }
+  }
+
+  Future<void> _clearDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('post_draft_title');
+      await prefs.remove('post_draft_content');
+      await prefs.remove('post_draft_category');
+      await prefs.remove('post_draft_monette_area');
+    } catch (e) {
+      logger.e('Failed to clear post draft: $e');
+    }
+  }
+
+  Future<void> _checkAndLoadDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draftTitle = prefs.getString('post_draft_title') ?? '';
+      final draftContent = prefs.getString('post_draft_content') ?? '';
+      final draftCategory = prefs.getString('post_draft_category') ?? '';
+      final draftMonetteArea = prefs.getString('post_draft_monette_area');
+
+      if (draftTitle.isNotEmpty || draftContent.isNotEmpty) {
+        setState(() {
+          _titleController.text = draftTitle;
+          _contentController.text = draftContent;
+          if (draftCategory.isNotEmpty) {
+            _selectedCategory = draftCategory;
+          }
+          if (draftMonetteArea != null) {
+            _selectedMonetteArea = draftMonetteArea;
+          }
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Draft restored from your last session'),
+              backgroundColor: BoardColors.prairie,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(color: BoardColors.line),
+              ),
+              action: SnackBarAction(
+                label: 'Clear',
+                textColor: BoardColors.monette,
+                onPressed: () async {
+                  await _clearDraft();
+                  setState(() {
+                    _titleController.clear();
+                    _contentController.clear();
+                    _selectedCategory = widget.initialCategory;
+                    _selectedMonetteArea = null;
+                  });
+                },
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      logger.e('Failed to load post draft: $e');
+    } finally {
+      _titleController.addListener(_saveDraft);
+      _contentController.addListener(_saveDraft);
+    }
   }
 
   Future<void> _submitPost() async {
@@ -116,15 +195,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           ? _selectedMonetteArea
           : null;
 
+      final auth = ref.read(authProvider);
+      final isRegistered = auth.user != null && !auth.user!.isAnonymous;
+      final postAsRegistered = isRegistered && !_isAnonymousPost;
+
       final insertPayload = <String, dynamic>{
         'title': sanitizedTitle,
         'content': sanitizedContent,
         'category': _selectedCategory,
         'province_state': _selectedProvinceState,
         'anonymous_user_id': anonymousId,
-        'is_anonymous': true,
-        'author_username': authorUsername,
-        'author_verified': false,
+        'is_anonymous': !postAsRegistered,
+        'author_username': postAsRegistered ? auth.profile?.username : authorUsername,
+        'author_verified': postAsRegistered,
         'image_url': imageUrls.isNotEmpty ? imageUrls.first : null,
         'image_urls': imageUrls,
         if (monetteArea != null) 'monette_area': monetteArea,
@@ -132,15 +215,21 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
       final insertedPost = await _insertPost(insertPayload);
 
+      await _clearDraft();
+
       await ref
           .read(watchedThreadsProvider.notifier)
           .watch(Post.fromMap(insertedPost));
 
       postRateLimiter.recordPost();
 
+      if (postAsRegistered) {
+        await ref.read(authProvider.notifier).addReputationPoints(5, 'post');
+      }
+
       AnalyticsService.instance.logPostCreated(
         category: _selectedCategory,
-        isAnonymous: true,
+        isAnonymous: !postAsRegistered,
         provinceState: _selectedProvinceState,
       );
 
@@ -148,7 +237,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Posted anonymously'),
+            content: Text(postAsRegistered
+                ? 'Published as ${auth.profile?.username} (+5 Rep)'
+                : 'Posted anonymously'),
             backgroundColor: theme.colorScheme.primary,
           ),
         );
@@ -172,38 +263,60 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   Future<Map<String, dynamic>> _insertPost(
     Map<String, dynamic> insertPayload,
   ) async {
-    try {
-      final response =
-          await supabase.from('posts').insert(insertPayload).select().single();
-      return Map<String, dynamic>.from(response);
-    } catch (error) {
-      if (insertPayload.containsKey('monette_area') &&
-          _isMissingMonetteAreaColumn(error)) {
-        final fallbackPayload = Map<String, dynamic>.from(insertPayload)
-          ..remove('monette_area');
-        final response = await supabase
-            .from('posts')
-            .insert(fallbackPayload)
-            .select()
-            .single();
-        return Map<String, dynamic>.from(response);
-      }
-      rethrow;
-    }
-  }
+    final payload = Map<String, dynamic>.from(insertPayload);
+    payload['created_at'] = FieldValue.serverTimestamp();
+    payload['updated_at'] = FieldValue.serverTimestamp();
+    payload['is_deleted'] = false;
+    payload['comment_count'] = 0;
+    payload['vote_count'] = 0;
+    payload['thumbs_up_count'] = 0;
+    payload['thumbs_down_count'] = 0;
+    payload['partial_count'] = 0;
+    payload['funny_count'] = 0;
+    payload['user_id'] = payload['anonymous_user_id']; // For RLS-style ownership
 
-  bool _isMissingMonetteAreaColumn(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('monette_area') &&
-        (message.contains('column') || message.contains('schema cache'));
+    final docRef = firestore.collection('posts').doc();
+    
+    await firestore.runTransaction((transaction) async {
+      transaction.set(docRef, payload);
+      
+      final statsRef = firestore.collection('stats').doc('global');
+      transaction.set(
+        statsRef,
+        {
+          'total_posts': FieldValue.increment(1),
+        },
+        SetOptions(merge: true),
+      );
+    });
+
+    final snapshot = await docRef.get();
+    final data = snapshot.data() as Map<String, dynamic>;
+    data['id'] = docRef.id;
+    if (data['created_at'] is Timestamp) {
+      data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+    }
+    return data;
   }
 
   Future<void> _loadPostingAlias() async {
+    final profile = ref.read(authProvider).profile;
+    if (profile != null) {
+      if (!mounted) return;
+      setState(() {
+        _postingAlias = profile.username;
+        _hasCustomPostingAlias = true;
+        _isAnonymousPost = false;
+      });
+      return;
+    }
+
     final savedAlias = await AnonymousIdService.getSavedDisplayName();
     if (!mounted) return;
     setState(() {
       _postingAlias = savedAlias ?? AnonymousIdService.defaultDisplayName;
       _hasCustomPostingAlias = savedAlias != null;
+      _isAnonymousPost = true;
     });
   }
 
@@ -268,15 +381,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       final path =
           'anonymous/$anonymousId/${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.jpg';
 
-      await supabase.storage.from('post-images').uploadBinary(
-            path,
-            uploadBytes,
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: false,
-            ),
-          );
-      urls.add(supabase.storage.from('post-images').getPublicUrl(path));
+      final ref = firebaseStorage.ref().child('post-images/$path');
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+
+      await ref.putData(uploadBytes, metadata);
+      final downloadUrl = await ref.getDownloadURL();
+      urls.add(downloadUrl);
     }
     return urls;
   }
@@ -303,148 +413,27 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   }
 
   Future<void> _openAliasEditor() async {
-    final controller = TextEditingController(
-      text: _hasCustomPostingAlias ? _postingAlias : '',
+    final profile = ref.read(authProvider).profile;
+    final result = await showPostingAsSheet(
+      context,
+      currentAlias: _postingAlias,
+      hasCustomAlias: _hasCustomPostingAlias,
+      userProfile: profile,
+      initialIsAnonymous: _isAnonymousPost,
     );
-    bool rememberOnDevice = true;
-
-    final result = await showModalBottomSheet<_AliasSelection>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: BoardColors.paper,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                ),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 44,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: BoardColors.line,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text('Posting as', style: BoardText.roomTitle),
-                    const SizedBox(height: 8),
-                    Text(
-                      'This is public display text only. It is not an account.',
-                      style: BoardText.body.copyWith(color: BoardColors.muted),
-                    ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      maxLength: 24,
-                      decoration: InputDecoration(
-                        labelText: 'Anonymous display name',
-                        hintText: AnonymousIdService.defaultDisplayName,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF303229),
-                        labelStyle: const TextStyle(color: BoardColors.muted),
-                        hintStyle: const TextStyle(color: BoardColors.muted),
-                        counterText: '',
-                      ),
-                      style: BoardText.body,
-                    ),
-                    const SizedBox(height: 8),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: rememberOnDevice,
-                      activeColor: BoardColors.green,
-                      title: Text(
-                        'Remember on this device',
-                        style: BoardText.body.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'No sign-in. Clearing browser/app data removes it.',
-                        style: BoardText.meta,
-                      ),
-                      onChanged: (value) {
-                        setSheetState(() {
-                          rememberOnDevice = value ?? true;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              Navigator.of(context).pop(
-                                const _AliasSelection(
-                                  alias: AnonymousIdService.defaultDisplayName,
-                                  hasCustomAlias: false,
-                                  remember: false,
-                                ),
-                              );
-                            },
-                            child: const Text('Use default'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: BoardColors.green,
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () {
-                              final sanitized = sanitizeInput(controller.text);
-                              final normalized =
-                                  AnonymousIdService.normalizeDisplayName(
-                                sanitized,
-                              );
-                              Navigator.of(context).pop(
-                                _AliasSelection(
-                                  alias: normalized.isEmpty
-                                      ? AnonymousIdService.defaultDisplayName
-                                      : normalized,
-                                  hasCustomAlias: normalized.isNotEmpty,
-                                  remember:
-                                      rememberOnDevice && normalized.isNotEmpty,
-                                ),
-                              );
-                            },
-                            child: const Text('Apply'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    controller.dispose();
     if (result == null) return;
 
-    if (result.remember) {
+    if (result == 'show_auth') {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => AuthDialog(ref: ref),
+      );
+      return;
+    }
+
+    if (result.remember && result.isAnonymous) {
       await AnonymousIdService.setSavedDisplayName(result.alias);
     }
 
@@ -452,6 +441,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     setState(() {
       _postingAlias = result.alias;
       _hasCustomPostingAlias = result.hasCustomAlias;
+      _isAnonymousPost = result.isAnonymous;
     });
   }
 
@@ -549,6 +539,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   }
 
   Widget _buildPostingAsSection() {
+    final auth = ref.watch(authProvider);
+    final profile = auth.profile;
+    final isRegistered = profile != null && !_isAnonymousPost;
+
     return _SectionPanel(
       child: InkWell(
         onTap: _openAliasEditor,
@@ -561,17 +555,21 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 height: 42,
                 width: 42,
                 decoration: BoxDecoration(
-                  color: BoardColors.green.withValues(alpha: 0.14),
+                  color: isRegistered
+                      ? BoardColors.sky.withValues(alpha: 0.14)
+                      : BoardColors.green.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: BoardColors.green.withValues(alpha: 0.25),
+                    color: isRegistered
+                        ? BoardColors.sky.withValues(alpha: 0.25)
+                        : BoardColors.green.withValues(alpha: 0.25),
                   ),
                 ),
                 alignment: Alignment.center,
-                child: const FaIcon(
-                  FontAwesomeIcons.userSecret,
+                child: FaIcon(
+                  isRegistered ? FontAwesomeIcons.user : FontAwesomeIcons.userSecret,
                   size: 18,
-                  color: BoardColors.green,
+                  color: isRegistered ? BoardColors.sky : BoardColors.green,
                 ),
               ),
               const SizedBox(width: 12),
@@ -579,21 +577,45 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Posting as', style: BoardText.meta),
+                    Text('Posting Identity', style: BoardText.meta),
                     const SizedBox(height: 3),
-                    Text(
-                      _postingAlias,
-                      style: BoardText.body.copyWith(
-                        color: BoardColors.ink,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            isRegistered ? profile.username : _postingAlias,
+                            overflow: TextOverflow.ellipsis,
+                            style: BoardText.body.copyWith(
+                              color: BoardColors.ink,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (isRegistered) ...[
+                          const SizedBox(width: 6),
+                          const FaIcon(
+                            FontAwesomeIcons.circleCheck,
+                            size: 13,
+                            color: BoardColors.sky,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            profile.levelInfo.emoji,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      _hasCustomPostingAlias
-                          ? 'Saved locally unless changed for this post.'
-                          : 'Default public label. No account attached.',
-                      style: BoardText.meta,
+                      isRegistered
+                          ? 'Verified Profile. Earns +5 reputation points!'
+                          : _hasCustomPostingAlias
+                              ? 'Custom handle (saved locally).'
+                              : 'Default anonymous label (no points earned).',
+                      style: BoardText.meta.copyWith(
+                        color: isRegistered ? BoardColors.sky : null,
+                      ),
                     ),
                   ],
                 ),
@@ -808,6 +830,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       _selectedMonetteArea = null;
                     }
                   });
+                  _saveDraft();
                 }
               },
             );
@@ -858,6 +881,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           _selectedMonetteArea =
               isKnownMonetteArea(normalized) ? normalized : null;
         });
+        _saveDraft();
       },
     );
   }

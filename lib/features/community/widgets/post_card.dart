@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/utils/globals.dart';
 import '../../../core/models/models.dart';
 import '../../../models/user_profile.dart' show TruthMeterStatus;
@@ -10,6 +12,8 @@ import '../providers/watch_provider.dart';
 import 'board_post_card.dart';
 import 'board_truth_meter.dart';
 import 'comment_section.dart';
+import '../providers/auth_provider.dart';
+import '../../../models/user_profile.dart';
 
 // --- POST CARD ---
 class PostCard extends ConsumerStatefulWidget {
@@ -25,7 +29,7 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   /// Check if current user owns this post
   bool get _isOwner {
-    final userId = supabase.auth.currentUser?.id;
+    final userId = firebaseAuth.currentUser?.uid;
     return userId != null && widget.post.userId == userId;
   }
 
@@ -67,7 +71,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         additionController: additionController,
         onSave: (addition) async {
           try {
-            final userId = supabase.auth.currentUser?.id;
+            final userId = firebaseAuth.currentUser?.uid;
             if (userId == null) throw 'Not authenticated';
 
             // Sanitize the addition
@@ -80,12 +84,11 @@ class _PostCardState extends ConsumerState<PostCard> {
             final newContent =
                 '${widget.post.content}\n\n---\n**Edit:** $sanitizedAddition';
 
-            // Call the edit_post RPC function
-            await supabase.rpc('edit_post', params: {
-              'post_id_in': widget.post.id,
-              'user_id_in': userId,
-              'new_title': widget.post.title, // Title cannot be changed
-              'new_content': newContent,
+            // Update post in Firestore
+            await firestore.collection('posts').doc(widget.post.id).update({
+              'content': newContent,
+              'edited_at': FieldValue.serverTimestamp(),
+              'edit_count': FieldValue.increment(1),
             });
 
             // Refresh posts to show updated content
@@ -113,7 +116,7 @@ class _PostCardState extends ConsumerState<PostCard> {
       ),
     );
 
-    if (result == true && mounted) {
+    if (result == true && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Addition posted successfully!'),
@@ -133,7 +136,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         backgroundColor: const Color(0xFF1F2937),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.white.withOpacity(0.1)),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
         ),
         title: Row(
           children: [
@@ -165,7 +168,7 @@ class _PostCardState extends ConsumerState<PostCard> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && context.mounted) {
       await _deletePost(context);
     }
   }
@@ -173,13 +176,19 @@ class _PostCardState extends ConsumerState<PostCard> {
   /// Perform soft delete of post
   Future<void> _deletePost(BuildContext context) async {
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = firebaseAuth.currentUser?.uid;
       if (userId == null) throw 'Not authenticated';
 
-      // Call the soft_delete_post RPC function
-      await supabase.rpc('soft_delete_post', params: {
-        'post_id_in': widget.post.id,
-        'user_id_in': userId,
+      // Soft delete in Firestore
+      await firestore.collection('posts').doc(widget.post.id).update({
+        'is_deleted': true,
+        'deleted_at': FieldValue.serverTimestamp(),
+        'deleted_by': userId,
+      });
+
+      // Update global stats
+      await firestore.collection('stats').doc('global').update({
+        'total_posts': FieldValue.increment(-1),
       });
 
       // Refresh posts to remove deleted post
@@ -189,7 +198,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
 
-      if (mounted) {
+      if (context.mounted) {
         // Show undo snackbar
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -205,7 +214,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         );
       }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error deleting post: $e'),
@@ -219,12 +228,19 @@ class _PostCardState extends ConsumerState<PostCard> {
   /// Restore a soft-deleted post
   Future<void> _restorePost(BuildContext context) async {
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = firebaseAuth.currentUser?.uid;
       if (userId == null) throw 'Not authenticated';
 
-      await supabase.rpc('restore_post', params: {
-        'post_id_in': widget.post.id,
-        'user_id_in': userId,
+      // Restore in Firestore
+      await firestore.collection('posts').doc(widget.post.id).update({
+        'is_deleted': false,
+        'deleted_at': null,
+        'deleted_by': null,
+      });
+
+      // Update global stats
+      await firestore.collection('stats').doc('global').update({
+        'total_posts': FieldValue.increment(1),
       });
 
       // Refresh posts to show restored post
@@ -234,7 +250,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
 
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Post restored!'),
@@ -243,7 +259,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         );
       }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error restoring post: $e'),
@@ -260,6 +276,8 @@ class _PostCardState extends ConsumerState<PostCard> {
 
     try {
       final anonId = await AnonymousIdService.getAnonymousId();
+      final profile = ref.read(authProvider).profile;
+      final weight = profile != null ? profile.voteWeight.round() : 1;
 
       // Check client-side rate limiting
       final rateLimiter = RateLimiter();
@@ -268,16 +286,84 @@ class _PostCardState extends ConsumerState<PostCard> {
         throw rateLimitError;
       }
 
-      // Direct truth_votes writes are blocked by RLS; the RPC owns validation.
-      await supabase.rpc('cast_user_vote', params: {
-        'post_id_in': widget.post.id,
-        'user_id_in': null,
-        'anonymous_user_id_in': anonId,
-        'vote_type_in': voteType,
+      // Check self-voting
+      if (widget.post.userId == anonId) {
+        throw 'You cannot vote on your own post';
+      }
+
+      final voteRef = firestore.collection('votes').doc('${anonId}_${widget.post.id}');
+      final postRef = firestore.collection('posts').doc(widget.post.id);
+      final statsRef = firestore.collection('stats').doc('global');
+
+      bool isNewVote = false;
+
+      await firestore.runTransaction((transaction) async {
+        final voteSnapshot = await transaction.get(voteRef);
+        final postSnapshot = await transaction.get(postRef);
+
+        if (!postSnapshot.exists) {
+          throw 'Post not found';
+        }
+
+        final postData = postSnapshot.data() as Map<String, dynamic>;
+        final postAuthorId = postData['user_id'] ?? postData['anonymous_user_id'];
+        if (postAuthorId == anonId) {
+          throw 'You cannot vote on your own post';
+        }
+
+        String? oldVoteType;
+        if (voteSnapshot.exists) {
+          final oldVoteData = voteSnapshot.data() as Map<String, dynamic>;
+          oldVoteType = oldVoteData['vote_type'] as String?;
+        }
+
+        // Set/update the vote
+        transaction.set(voteRef, {
+          'post_id': widget.post.id,
+          'anonymous_user_id': anonId,
+          'vote_type': voteType,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+
+        // Determine updates to post vote counts
+        final postUpdates = <String, dynamic>{};
+        if (oldVoteType != null) {
+          // Decrement old count if different, using the same weight for safety
+          if (oldVoteType != voteType) {
+            postUpdates['${oldVoteType}_count'] = FieldValue.increment(-weight);
+            postUpdates['${voteType}_count'] = FieldValue.increment(weight);
+          }
+        } else {
+          isNewVote = true;
+          // Increment new count and total vote count
+          postUpdates['${voteType}_count'] = FieldValue.increment(weight);
+          postUpdates['vote_count'] = FieldValue.increment(1);
+
+          // Increment global stats total_votes
+          transaction.set(
+            statsRef,
+            {
+              'total_votes': FieldValue.increment(1),
+            },
+            SetOptions(merge: true),
+          );
+        }
+
+        if (postUpdates.isNotEmpty) {
+          transaction.update(postRef, postUpdates);
+        }
       });
 
       // Record successful vote for rate limiting
       rateLimiter.recordVote(widget.post.id);
+
+      // Award +1 reputation point for a new vote if registered
+      if (isNewVote && profile != null) {
+        await ref.read(authProvider.notifier).addReputationPoints(1, 'vote');
+      }
+
+      // Trigger light haptic on success
+      await HapticFeedback.lightImpact();
 
       // Refresh categories to pick up the vote count change
       final currentCategories =
@@ -301,6 +387,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         ),
       );
     } catch (e) {
+      // Trigger heavy haptic on error
+      await HapticFeedback.heavyImpact();
       String errorMessage = 'Error casting vote';
       final errorStr = e.toString();
 
@@ -459,7 +547,7 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
       backgroundColor: const Color(0xFF1F2937),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withOpacity(0.1)),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 500),
@@ -474,7 +562,7 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF84CC16).withOpacity(0.1),
+                    color: const Color(0xFF84CC16).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -506,9 +594,9 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -543,7 +631,7 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
               constraints: const BoxConstraints(maxHeight: 100),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: SingleChildScrollView(
@@ -575,7 +663,7 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
               autofocus: true,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Colors.black.withOpacity(0.3),
+                fillColor: Colors.black.withValues(alpha: 0.3),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -629,7 +717,7 @@ class _AddToPostDialogState extends State<_AddToPostDialog> {
                           final success = await widget.onSave(
                             widget.additionController.text,
                           );
-                          if (mounted) {
+                          if (context.mounted) {
                             if (success) {
                               Navigator.pop(context, true);
                             } else {

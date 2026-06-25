@@ -3,6 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 /// Skeleton placeholder card shown while posts are loading
 class PostSkeletonCard extends StatelessWidget {
+  const PostSkeletonCard({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -10,7 +12,7 @@ class PostSkeletonCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1F2937),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +55,7 @@ class PostSkeletonCard extends StatelessWidget {
         ],
       ),
     ).animate(onPlay: (c) => c.repeat())
-      .shimmer(duration: 1500.ms, color: Colors.white.withOpacity(0.05));
+      .shimmer(duration: 1500.ms, color: Colors.white.withValues(alpha: 0.05));
   }
 }
 
@@ -75,7 +77,7 @@ class SkeletonBox extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(borderRadius),
       ),
     );
