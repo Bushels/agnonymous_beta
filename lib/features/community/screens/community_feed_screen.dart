@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../create_post_screen.dart';
+import 'create_scam_report_screen.dart';
 import '../board_theme.dart';
 import '../community_categories.dart';
 import '../providers/community_providers.dart';
@@ -84,6 +85,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _openCreatePost() {
+    if (selectedCategory == 'Scams') {
+      final auth = ref.read(authProvider);
+      if (auth.user == null || auth.user!.isAnonymous) {
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          builder: (context) => AuthDialog(ref: ref),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must sign in or register to report a scam.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const CreateScamReportScreen(),
+        ),
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CreatePostScreen(
@@ -195,9 +220,10 @@ class _RoomHeroState extends State<_RoomHero> {
 
   @override
   Widget build(BuildContext context) {
+    final isScamCategory = widget.selectedCategory == 'Scams';
     final room = widget.selectedCategory.isEmpty
         ? 'All Rooms'
-        : '${widget.selectedCategory} Room';
+        : (isScamCategory ? 'Scam Registry' : '${widget.selectedCategory} Room');
 
     return SafeArea(
       bottom: false,
@@ -322,12 +348,15 @@ class _RoomHeroState extends State<_RoomHero> {
                     Text(room, style: BoardText.roomTitle),
                     const SizedBox(height: 8),
                     Text(
-                      'Anonymous field reports, questions, and photos from the prairie.',
+                      isScamCategory
+                          ? 'Farmer-reported transaction scams, non-payment, and crop trade fraud. Verified account required to post.'
+                          : 'Anonymous field reports, questions, and photos from the prairie.',
                       style: BoardText.body.copyWith(
                         color: BoardColors.muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (isScamCategory) const _ScamSortSelector(),
                     if (searchOpen) ...[
                       const SizedBox(height: 16),
                       _searchField(),
@@ -901,5 +930,74 @@ class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant CategoryChipsDelegate oldDelegate) {
     return oldDelegate.selectedCategory != selectedCategory;
+  }
+}
+
+class _ScamSortSelector extends ConsumerWidget {
+  const _ScamSortSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeSort = ref.watch(scamsSortProvider);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12.0),
+      child: Row(
+        children: [
+          Text(
+            'Sort by:  ',
+            style: BoardText.meta.copyWith(color: BoardColors.muted),
+          ),
+          _SortChip(
+            label: 'Latest',
+            selected: activeSort == ScamsSortMode.latest,
+            onTap: () => ref.read(scamsSortProvider.notifier).set(ScamsSortMode.latest),
+          ),
+          const SizedBox(width: 8),
+          _SortChip(
+            label: 'Highest Loss',
+            selected: activeSort == ScamsSortMode.highestLoss,
+            onTap: () => ref.read(scamsSortProvider.notifier).set(ScamsSortMode.highestLoss),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SortChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SortChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const activeColor = BoardColors.amber;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? activeColor.withValues(alpha: 0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? activeColor : BoardColors.line,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: BoardText.meta.copyWith(
+            color: selected ? activeColor : BoardColors.muted,
+          ),
+        ),
+      ),
+    );
   }
 }

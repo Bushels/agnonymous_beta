@@ -38,6 +38,16 @@ class Post {
   final String? imageUrl;
   final List<String> imageUrls;
 
+  // Scam-specific fields
+  final String? scammerName;
+  final String? scammerEmail;
+  final String? scammerPhone;
+  final String? scammerCompany;
+  final String? scamLocation;
+  final String? lossItem;
+  final double? lossAmount;
+  final List<String>? searchKeywords;
+
   Post({
     required this.id,
     required this.title,
@@ -67,6 +77,14 @@ class Post {
     this.editCount = 0,
     this.imageUrl,
     List<String>? imageUrls,
+    this.scammerName,
+    this.scammerEmail,
+    this.scammerPhone,
+    this.scammerCompany,
+    this.scamLocation,
+    this.lossItem,
+    this.lossAmount,
+    this.searchKeywords,
   }) : imageUrls = imageUrls ?? _normalizeImageUrls(imageUrl, null);
 
   factory Post.fromMap(Map<String, dynamic> map) {
@@ -108,6 +126,16 @@ class Post {
       editCount: map['edit_count'] ?? 0,
       imageUrl: imageUrl,
       imageUrls: imageUrls,
+      scammerName: map['scammer_name'],
+      scammerEmail: map['scammer_email'],
+      scammerPhone: map['scammer_phone'],
+      scammerCompany: map['scammer_company'],
+      scamLocation: map['scam_location'],
+      lossItem: map['loss_item'],
+      lossAmount: (map['loss_amount'] as num?)?.toDouble(),
+      searchKeywords: map['search_keywords'] != null
+          ? List<String>.from(map['search_keywords'])
+          : null,
     );
   }
 
@@ -146,4 +174,7 @@ class Post {
     if (authorVerified) return '✅';
     return '⚠️';
   }
+
+  /// Check if the post is a Scam Report
+  bool get isScam => category == 'Scams';
 }

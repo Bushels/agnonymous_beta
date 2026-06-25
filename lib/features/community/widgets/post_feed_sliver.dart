@@ -5,6 +5,7 @@ import '../../../core/utils/globals.dart';
 import '../board_theme.dart';
 import '../providers/community_providers.dart';
 import 'post_card.dart';
+import 'scam_report_card.dart';
 import '../../../core/widgets/skeleton_loader.dart';
 
 class PostFeedSliver extends ConsumerStatefulWidget {
@@ -111,20 +112,43 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
               post.title.toLowerCase().contains(query) ||
               post.content.toLowerCase().contains(query) ||
               (post.monetteArea?.toLowerCase().contains(query) ?? false) ||
-              post.category.toLowerCase().contains(query))
+              post.category.toLowerCase().contains(query) ||
+              (post.scammerName?.toLowerCase().contains(query) ?? false) ||
+              (post.scammerEmail?.toLowerCase().contains(query) ?? false) ||
+              (post.scammerPhone?.toLowerCase().contains(query) ?? false) ||
+              (post.scammerCompany?.toLowerCase().contains(query) ?? false) ||
+              (post.scamLocation?.toLowerCase().contains(query) ?? false) ||
+              (post.lossItem?.toLowerCase().contains(query) ?? false))
           .toList();
     }
 
     // Apply sort mode
-    final sortMode = ref.watch(feedSortModeProvider);
-    if (sortMode == FeedSortMode.active) {
-      // Sort by comment activity, then by created_at for ties.
-      filteredPosts = List.from(filteredPosts)
-        ..sort((a, b) {
-          final commentCompare = b.commentCount.compareTo(a.commentCount);
-          if (commentCompare != 0) return commentCompare;
-          return b.createdAt.compareTo(a.createdAt);
-        });
+    if (widget.selectedCategory == 'Scams') {
+      final scamsSort = ref.watch(scamsSortProvider);
+      if (scamsSort == ScamsSortMode.highestLoss) {
+        filteredPosts = List.from(filteredPosts)
+          ..sort((a, b) {
+            final aLoss = a.lossAmount ?? 0.0;
+            final bLoss = b.lossAmount ?? 0.0;
+            final lossCompare = bLoss.compareTo(aLoss);
+            if (lossCompare != 0) return lossCompare;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+      } else {
+        filteredPosts = List.from(filteredPosts)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      }
+    } else {
+      final sortMode = ref.watch(feedSortModeProvider);
+      if (sortMode == FeedSortMode.active) {
+        // Sort by comment activity, then by created_at for ties.
+        filteredPosts = List.from(filteredPosts)
+          ..sort((a, b) {
+            final commentCompare = b.commentCount.compareTo(a.commentCount);
+            if (commentCompare != 0) return commentCompare;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+      }
     }
 
     // Empty state
@@ -234,12 +258,18 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
                 );
               }
             }
+            final post = filteredPosts[index];
             return Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
-              child: PostCard(
-                key: ValueKey(filteredPosts[index].id),
-                post: filteredPosts[index],
-              ),
+              child: post.isScam
+                  ? ScamReportCard(
+                      key: ValueKey(post.id),
+                      post: post,
+                    )
+                  : PostCard(
+                      key: ValueKey(post.id),
+                      post: post,
+                    ),
             );
           },
           childCount: filteredPosts.length + (hasFooter ? 1 : 0),

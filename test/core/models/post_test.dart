@@ -234,5 +234,36 @@ void main() {
         expect(post.wasEdited, false);
       });
     });
+
+    group('Scams parsing', () {
+      test('constructs scam post attributes correctly', () {
+        final map = {
+          'id': 'scam-001',
+          'title': 'Stolen bales',
+          'category': 'Scams',
+          'created_at': '2026-06-25T12:00:00Z',
+          'scammer_name': 'John Doe',
+          'scammer_company': 'Doe Ag',
+          'scammer_phone': '3065551212',
+          'scammer_email': 'john@doeag.com',
+          'scam_location': 'Moose Jaw, SK',
+          'loss_item': 'Barley bales',
+          'loss_amount': 5400.0,
+          'search_keywords': ['john', 'doe', 'bales'],
+        };
+
+        final post = Post.fromMap(map);
+
+        expect(post.isScam, true);
+        expect(post.scammerName, 'John Doe');
+        expect(post.scammerCompany, 'Doe Ag');
+        expect(post.scammerPhone, '3065551212');
+        expect(post.scammerEmail, 'john@doeag.com');
+        expect(post.scamLocation, 'Moose Jaw, SK');
+        expect(post.lossItem, 'Barley bales');
+        expect(post.lossAmount, 5400.0);
+        expect(post.searchKeywords, contains('john'));
+      });
+    });
   });
 }

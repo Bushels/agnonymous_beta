@@ -21,6 +21,7 @@ class MonetteArea {
 const List<CommunityCategory> boardCategories = [
   CommunityCategory(name: 'Monette', icon: '\u{1F4CD}'),
   CommunityCategory(name: 'General', icon: '\u{1F4DD}'),
+  CommunityCategory(name: 'Scams', icon: '\u{1F6E1}\uFE0F'),
   CommunityCategory(name: 'Grain', icon: '\u{1F33E}'),
   CommunityCategory(name: 'Ag Business', icon: '\u{1F3E2}'),
   CommunityCategory(name: 'Equipment', icon: '\u{1F527}'),

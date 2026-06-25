@@ -461,3 +461,18 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
     mostPopularPostTitle: mostPopularPost?.title ?? 'No posts yet',
   );
 });
+
+enum ScamsSortMode { latest, highestLoss }
+
+class ScamsSortNotifier extends Notifier<ScamsSortMode> {
+  @override
+  ScamsSortMode build() => ScamsSortMode.latest;
+
+  void set(ScamsSortMode mode) {
+    state = mode;
+  }
+}
+
+final scamsSortProvider =
+    NotifierProvider<ScamsSortNotifier, ScamsSortMode>(ScamsSortNotifier.new);
+
