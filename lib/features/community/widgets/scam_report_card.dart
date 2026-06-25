@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/globals.dart';
 import '../../../core/models/post.dart';
@@ -12,7 +11,6 @@ import '../../../models/user_profile.dart' show TruthMeterStatus;
 import '../../../services/anonymous_id_service.dart';
 import '../../../services/rate_limiter.dart';
 import '../board_theme.dart';
-import '../community_categories.dart';
 import '../providers/community_providers.dart';
 import '../providers/watch_provider.dart';
 import '../providers/auth_provider.dart';
@@ -340,7 +338,7 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                   const FaIcon(FontAwesomeIcons.triangleExclamation, color: Color(0xFFEF4444), size: 14),
                   const SizedBox(width: 8),
                   Text(
-                    'VERIFIED USER SCAM REPORT',
+                    'VERIFIED USER C.U.N.T. REPORT',
                     style: BoardText.meta.copyWith(
                       color: const Color(0xFFEF4444),
                       fontWeight: FontWeight.w900,

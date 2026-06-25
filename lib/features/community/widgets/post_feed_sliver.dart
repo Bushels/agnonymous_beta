@@ -123,9 +123,9 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
     }
 
     // Apply sort mode
-    if (widget.selectedCategory == 'Scams') {
-      final scamsSort = ref.watch(scamsSortProvider);
-      if (scamsSort == ScamsSortMode.highestLoss) {
+    if (widget.selectedCategory == 'C.U.N.T.' || widget.selectedCategory == 'Scams') {
+      final scamsSort = ref.watch(cuntSortProvider);
+      if (scamsSort == CuntSortMode.highestLoss) {
         filteredPosts = List.from(filteredPosts)
           ..sort((a, b) {
             final aLoss = a.lossAmount ?? 0.0;

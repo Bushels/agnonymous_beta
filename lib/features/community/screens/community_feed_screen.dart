@@ -85,7 +85,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _openCreatePost() {
-    if (selectedCategory == 'Scams') {
+    if (selectedCategory == 'C.U.N.T.' || selectedCategory == 'Scams') {
       final auth = ref.read(authProvider);
       if (auth.user == null || auth.user!.isAnonymous) {
         showDialog(
@@ -95,7 +95,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('You must sign in or register to report a scam.'),
+            content: Text('You must sign in or register to publish a C.U.N.T. report.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -224,10 +224,10 @@ class _RoomHeroState extends State<_RoomHero> {
 
   @override
   Widget build(BuildContext context) {
-    final isScamCategory = widget.selectedCategory == 'Scams';
+    final isScamCategory = widget.selectedCategory == 'C.U.N.T.' || widget.selectedCategory == 'Scams';
     final room = widget.selectedCategory.isEmpty
         ? 'All Rooms'
-        : (isScamCategory ? 'Scam Registry' : '${widget.selectedCategory} Room');
+        : (isScamCategory ? 'C.U.N.T. Registry' : '${widget.selectedCategory} Room');
 
     return SafeArea(
       bottom: false,
@@ -353,14 +353,14 @@ class _RoomHeroState extends State<_RoomHero> {
                     const SizedBox(height: 8),
                     Text(
                       isScamCategory
-                          ? 'Farmer-reported transaction scams, non-payment, and crop trade fraud. Verified account required to post.'
+                          ? 'Chronic Unpaid Network Therapy registry. Farmer-reported transaction non-payment and crop trade fraud. Verified account required to post.'
                           : 'Anonymous field reports, questions, and photos from the prairie.',
                       style: BoardText.body.copyWith(
                         color: BoardColors.muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (isScamCategory) const _ScamSortSelector(),
+                    if (isScamCategory) const _CuntSortSelector(),
                     if (searchOpen) ...[
                       const SizedBox(height: 16),
                       _searchField(),
@@ -937,12 +937,12 @@ class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class _ScamSortSelector extends ConsumerWidget {
-  const _ScamSortSelector();
+class _CuntSortSelector extends ConsumerWidget {
+  const _CuntSortSelector();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeSort = ref.watch(scamsSortProvider);
+    final activeSort = ref.watch(cuntSortProvider);
     return Padding(
       padding: const EdgeInsets.only(top: 12.0),
       child: Row(
@@ -953,14 +953,14 @@ class _ScamSortSelector extends ConsumerWidget {
           ),
           _SortChip(
             label: 'Latest',
-            selected: activeSort == ScamsSortMode.latest,
-            onTap: () => ref.read(scamsSortProvider.notifier).set(ScamsSortMode.latest),
+            selected: activeSort == CuntSortMode.latest,
+            onTap: () => ref.read(cuntSortProvider.notifier).set(CuntSortMode.latest),
           ),
           const SizedBox(width: 8),
           _SortChip(
             label: 'Highest Loss',
-            selected: activeSort == ScamsSortMode.highestLoss,
-            onTap: () => ref.read(scamsSortProvider.notifier).set(ScamsSortMode.highestLoss),
+            selected: activeSort == CuntSortMode.highestLoss,
+            onTap: () => ref.read(cuntSortProvider.notifier).set(CuntSortMode.highestLoss),
           ),
         ],
       ),

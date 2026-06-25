@@ -235,12 +235,12 @@ void main() {
       });
     });
 
-    group('Scams parsing', () {
-      test('constructs scam post attributes correctly', () {
+    group('C.U.N.T. parsing', () {
+      test('constructs C.U.N.T. post attributes correctly', () {
         final map = {
           'id': 'scam-001',
           'title': 'Stolen bales',
-          'category': 'Scams',
+          'category': 'C.U.N.T.',
           'created_at': '2026-06-25T12:00:00Z',
           'scammer_name': 'John Doe',
           'scammer_company': 'Doe Ag',

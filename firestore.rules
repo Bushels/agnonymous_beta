@@ -19,7 +19,7 @@ service cloud.firestore {
                     && request.resource.data.user_id == request.auth.uid
                     && request.resource.data.is_deleted == false
                     && (
-                      request.resource.data.category != 'Scams' 
+                      (request.resource.data.category != 'C.U.N.T.' && request.resource.data.category != 'Scams') 
                       || (
                         request.auth.token.firebase.sign_in_provider != 'anonymous'
                         && request.resource.data.is_anonymous == false

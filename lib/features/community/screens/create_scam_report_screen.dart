@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,7 +11,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../../core/utils/globals.dart';
-import '../../../core/utils/helpers.dart';
 import '../../../core/models/post.dart';
 import '../board_theme.dart';
 import '../providers/auth_provider.dart';
@@ -111,7 +109,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
     final auth = ref.read(authProvider);
     if (auth.user == null || auth.user!.isAnonymous) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must sign in or register to report a scam.')),
+        const SnackBar(content: Text('You must sign in or register to publish a C.U.N.T. report.')),
       );
       return;
     }
@@ -147,7 +145,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         'id': docRef.id,
         'title': title,
         'content': desc,
-        'category': 'Scams',
+        'category': 'C.U.N.T.',
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
         'comment_count': 0,
@@ -200,7 +198,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scam report published successfully. (+5 Rep)')),
+          const SnackBar(content: Text('C.U.N.T. report published successfully. (+5 Rep)')),
         );
       }
     } catch (e) {
@@ -260,7 +258,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
     return Scaffold(
       backgroundColor: BoardColors.prairie,
       appBar: AppBar(
-        title: Text('File Scam Report', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: BoardColors.ink)),
+        title: Text('File C.U.N.T. Report', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: BoardColors.ink)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -279,29 +277,29 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                   children: [
                     _buildSectionHeader('Report Title & Details'),
                     const SizedBox(height: 10),
-                    _buildTextField(_titleController, 'Title', 'e.g. Non-payment for barley bales', required: true),
+                    _buildTextField(_titleController, 'Title', 'e.g. Non-payment for barley bales', isRequired: true),
                     const SizedBox(height: 10),
-                    _buildTextField(_descController, 'Detailed Description', 'Describe how the scam occurred...', maxLines: 5, required: true),
+                    _buildTextField(_descController, 'Detailed Description', 'Describe how the transaction issue occurred...', maxLines: 5, isRequired: true),
                     
                     const SizedBox(height: 20),
                     _buildSectionHeader('Accused Contact Details'),
                     const SizedBox(height: 10),
-                    _buildTextField(_nameController, 'Scammer Name', 'Full Name of scammer', required: true),
+                    _buildTextField(_nameController, 'Debtor Name', 'Full Name of the individual', isRequired: true),
                     const SizedBox(height: 10),
                     _buildTextField(_companyController, 'Company / Entity', 'Business name if applicable'),
                     const SizedBox(height: 10),
-                    _buildTextField(_phoneController, 'Scammer Phone', 'Phone number if known'),
+                    _buildTextField(_phoneController, 'Debtor Phone', 'Phone number if known'),
                     const SizedBox(height: 10),
-                    _buildTextField(_emailController, 'Scammer Email', 'Email address if known'),
+                    _buildTextField(_emailController, 'Debtor Email', 'Email address if known'),
                     const SizedBox(height: 10),
-                    _buildTextField(_locationController, 'Scam Location', 'City, Province/State where scam took place', required: true),
+                    _buildTextField(_locationController, 'Transaction Location', 'City, Province/State where transaction took place', isRequired: true),
                     
                     const SizedBox(height: 20),
                     _buildSectionHeader('Loss Valuation'),
                     const SizedBox(height: 10),
-                    _buildTextField(_lossItemController, 'Loss Item', 'What was stolen/unpaid? (e.g. Canola seed)', required: true),
+                    _buildTextField(_lossItemController, 'Loss Item', 'What was unpaid? (e.g. Canola seed)', isRequired: true),
                     const SizedBox(height: 10),
-                    _buildTextField(_lossAmountController, 'Loss Amount ($ CAD)', 'Estimated monetary loss', keyboardType: TextInputType.number, required: true),
+                    _buildTextField(_lossAmountController, 'Loss Amount (\$ CAD)', 'Estimated monetary loss', keyboardType: TextInputType.number, isRequired: true),
                     
                     const SizedBox(height: 20),
                     _buildSectionHeader('Upload Proof / Evidence'),
@@ -372,7 +370,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                         ),
                         onPressed: _submitReport,
                         child: Text(
-                          'Publish Scam Report',
+                          'Publish C.U.N.T. Report',
                           style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
                         ),
                       ),
@@ -396,7 +394,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
     String label,
     String hint, {
     int maxLines = 1,
-    bool required = false,
+    bool isRequired = false,
     TextInputType keyboardType = TextInputType.text,
   }) {
     return TextFormField(
@@ -415,10 +413,10 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         fillColor: BoardColors.paper,
       ),
       validator: (value) {
-        if (required && (value == null || value.trim().isEmpty)) {
+        if (isRequired && (value == null || value.trim().isEmpty)) {
           return '$label is required';
         }
-        if (required && keyboardType == TextInputType.number && double.tryParse(value!) == null) {
+        if (isRequired && keyboardType == TextInputType.number && double.tryParse(value!) == null) {
           return 'Please enter a valid amount';
         }
         return null;

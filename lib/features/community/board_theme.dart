@@ -50,6 +50,7 @@ Color boardCategoryColor(String category) {
   switch (category.toLowerCase()) {
     case 'monette':
       return BoardColors.monette;
+    case 'c.u.n.t.':
     case 'scams':
       return const Color(0xFFEF4444);
     case 'grain':

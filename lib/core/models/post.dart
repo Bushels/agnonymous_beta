@@ -176,5 +176,5 @@ class Post {
   }
 
   /// Check if the post is a Scam Report
-  bool get isScam => category == 'Scams';
+  bool get isScam => category == 'C.U.N.T.' || category == 'Scams';
 }

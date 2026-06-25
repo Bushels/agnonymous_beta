@@ -462,17 +462,17 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
   );
 });
 
-enum ScamsSortMode { latest, highestLoss }
+enum CuntSortMode { latest, highestLoss }
 
-class ScamsSortNotifier extends Notifier<ScamsSortMode> {
+class CuntSortNotifier extends Notifier<CuntSortMode> {
   @override
-  ScamsSortMode build() => ScamsSortMode.latest;
+  CuntSortMode build() => CuntSortMode.latest;
 
-  void set(ScamsSortMode mode) {
+  void set(CuntSortMode mode) {
     state = mode;
   }
 }
 
-final scamsSortProvider =
-    NotifierProvider<ScamsSortNotifier, ScamsSortMode>(ScamsSortNotifier.new);
+final cuntSortProvider =
+    NotifierProvider<CuntSortNotifier, CuntSortMode>(CuntSortNotifier.new);
 
