@@ -446,3 +446,17 @@ rm agnonymous_beta/agnonymous_beta/.env
 The outer (production) repo does not need a `.env` file because `.env`
 was removed from `pubspec.yaml` assets in the relaunch — credentials
 flow through `--dart-define` instead.
+
+---
+
+## 2026-06-25 Ship Log — C.U.N.T. Registry
+
+Integrated a debtor registry to protect farmers. Shipped to `agnonymous.buperac.com`.
+
+### What shipped
+
+- **Acronym and Branding**: Feature is named **C.U.N.T.** (**Chronic Unpaid Network Therapy**).
+- **Security Rule**: Restricted creation of reports under the `C.U.N.T.` category to authenticated (logged-in) users. Standard users remain anonymous on the rest of the board.
+- **Card UI**: Added a dedicated `ScamReportCard` featuring disputed transaction details, debtor contact fields, quick-copy options, and the truth meter.
+- **Search and Sort**: Integrated search and client-side sorting by value lost (`lossAmount`).
+- **Compilation Fixes**: Renamed standard text field parameter `required` to `isRequired` to avoid Dart reserved keyword clashes and escaped string interpolation on CAD valuations.

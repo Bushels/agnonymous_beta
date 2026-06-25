@@ -6,9 +6,9 @@ This section is the current source of truth and overrides older dashboard, marke
 
 Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
 
-- No sign up or sign in.
-- Anonymous reading, posting, commenting, and voting.
+- No sign up or sign in for standard usage. Anonymous reading, posting, commenting, and voting are fully supported.
 - Monette is the first-class launch room.
+- C.U.N.T. (Chronic Unpaid Network Therapy) registry is a first-class board registry under category 'C.U.N.T.'. Submitting debtor/unpaid reports is restricted to authenticated (logged-in) users to prevent fraudulent claims, while standard users can view, search, comment, and vote.
 - Monette posts can optionally reference a public farming area from the Monette-only area menu.
 - The bottom post control is icon-only.
 - Watch state is tied to the anonymous device ID, not an account.
