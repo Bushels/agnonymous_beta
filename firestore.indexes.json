@@ -9,6 +9,10 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "created_at",
           "order": "DESCENDING"
         }
@@ -25,6 +29,132 @@
         {
           "fieldPath": "is_deleted",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "is_deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "comment_count",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "is_deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "comment_count",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "is_deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "loss_amount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "is_deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "search_keywords",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "is_deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pending_review",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "search_keywords",
+          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "created_at",

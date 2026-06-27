@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class UserProfile {
   final String id;
   final String username;
-  final String? email;  // Nullable for anonymous users
+  final String? email; // Nullable for anonymous users
   final bool emailVerified;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -26,7 +26,7 @@ class UserProfile {
   UserProfile({
     required this.id,
     required this.username,
-    this.email,  // Optional for anonymous users
+    this.email, // Optional for anonymous users
     required this.emailVerified,
     required this.createdAt,
     required this.updatedAt,
@@ -47,7 +47,7 @@ class UserProfile {
     return UserProfile(
       id: map['id'] as String,
       username: map['username'] as String,
-      email: map['email'] as String?,  // Nullable for anonymous users
+      email: map['email'] as String?, // Nullable for anonymous users
       emailVerified: map['email_verified'] as bool? ?? false,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
@@ -64,13 +64,11 @@ class UserProfile {
     );
   }
 
-  /// Convert to map for Supabase
-  Map<String, dynamic> toMap() {
+  /// Convert to map for public profile (no email details)
+  Map<String, dynamic> toPublicMap() {
     return {
       'id': id,
       'username': username,
-      'email': email,
-      'email_verified': emailVerified,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'province_state': provinceState,
@@ -83,6 +81,14 @@ class UserProfile {
       'post_count': postCount,
       'comment_count': commentCount,
       'vote_count': voteCount,
+    };
+  }
+
+  /// Convert to map for private profile details
+  Map<String, dynamic> toPrivateMap() {
+    return {
+      'email': email,
+      'email_verified': emailVerified,
     };
   }
 
@@ -126,18 +132,21 @@ class UserProfile {
   }
 
   /// Get reputation level info
-  ReputationLevelInfo get levelInfo => ReputationLevelInfo.fromLevel(reputationLevel);
+  ReputationLevelInfo get levelInfo =>
+      ReputationLevelInfo.fromLevel(reputationLevel);
 
   /// Points needed for next level
   int get pointsToNextLevel {
-    final nextLevelThreshold = ReputationLevelInfo.fromLevel(reputationLevel + 1).minPoints;
+    final nextLevelThreshold =
+        ReputationLevelInfo.fromLevel(reputationLevel + 1).minPoints;
     return nextLevelThreshold - reputationPoints;
   }
 
   /// Progress to next level (0.0 to 1.0)
   double get progressToNextLevel {
     final currentLevelThreshold = levelInfo.minPoints;
-    final nextLevelThreshold = ReputationLevelInfo.fromLevel(reputationLevel + 1).minPoints;
+    final nextLevelThreshold =
+        ReputationLevelInfo.fromLevel(reputationLevel + 1).minPoints;
     final range = nextLevelThreshold - currentLevelThreshold;
     final progress = reputationPoints - currentLevelThreshold;
     return (progress / range).clamp(0.0, 1.0);
@@ -267,7 +276,11 @@ class ReputationLevelInfo {
           emoji: '👑',
           minPoints: 5000,
           voteWeight: 3.0,
-          perks: ['Vote weight: 3.0x', 'Top leaderboard tier', 'Maximum influence'],
+          perks: [
+            'Vote weight: 3.0x',
+            'Top leaderboard tier',
+            'Maximum influence'
+          ],
         );
       default:
         return const ReputationLevelInfo(

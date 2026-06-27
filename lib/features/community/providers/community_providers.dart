@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utils/globals.dart';
 import '../../../core/models/models.dart';
 import 'watch_provider.dart';
@@ -45,19 +46,31 @@ class CategoryPostsState {
 
 class PaginatedPostsState {
   final Map<String, CategoryPostsState> categoryStates;
+  final String searchQuery;
+  final String feedSortMode; // 'latest' or 'active'
+  final String cuntSortMode; // 'latest' or 'highestLoss'
   final String? error;
 
   const PaginatedPostsState({
     this.categoryStates = const {},
+    this.searchQuery = '',
+    this.feedSortMode = 'latest',
+    this.cuntSortMode = 'latest',
     this.error,
   });
 
   PaginatedPostsState copyWith({
     Map<String, CategoryPostsState>? categoryStates,
+    String? searchQuery,
+    String? feedSortMode,
+    String? cuntSortMode,
     String? error,
   }) {
     return PaginatedPostsState(
       categoryStates: categoryStates ?? this.categoryStates,
+      searchQuery: searchQuery ?? this.searchQuery,
+      feedSortMode: feedSortMode ?? this.feedSortMode,
+      cuntSortMode: cuntSortMode ?? this.cuntSortMode,
       error: error ?? this.error,
     );
   }
@@ -74,6 +87,10 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
 
   @override
   PaginatedPostsState build() {
+    final searchQuery = ref.watch(searchQueryProvider);
+    final feedSort = ref.watch(feedSortModeProvider);
+    final cuntSort = ref.watch(cuntSortProvider);
+
     _initRealTime();
 
     // Defer loading to next microtask so state is initialized first
@@ -86,7 +103,7 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         final watchedIds = next.threads.keys.toSet();
         final updatedPosts =
             watchedState.posts.where((p) => watchedIds.contains(p.id)).toList();
-        
+
         final updatedCategoryStates =
             Map<String, CategoryPostsState>.from(state.categoryStates);
         updatedCategoryStates['watched'] = watchedState.copyWith(
@@ -101,7 +118,30 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
       _postsSubscription?.cancel();
     });
 
-    return const PaginatedPostsState();
+    return PaginatedPostsState(
+      searchQuery: searchQuery,
+      feedSortMode: feedSort == FeedSortMode.active ? 'active' : 'latest',
+      cuntSortMode:
+          cuntSort == CuntSortMode.highestLoss ? 'highestLoss' : 'latest',
+    );
+  }
+
+  void setSearchQuery(String category, String query) {
+    ref.read(searchQueryProvider.notifier).set(query);
+  }
+
+  void setFeedSortMode(String category, String sortMode) {
+    ref.read(feedSortModeProvider.notifier).set(
+          sortMode == 'active' ? FeedSortMode.active : FeedSortMode.recent,
+        );
+  }
+
+  void setCuntSortMode(String category, String sortMode) {
+    ref.read(cuntSortProvider.notifier).set(
+          sortMode == 'highestLoss'
+              ? CuntSortMode.highestLoss
+              : CuntSortMode.latest,
+        );
   }
 
   Future<void> loadPostsForCategory(String category,
@@ -124,12 +164,15 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
     try {
       logger.d('Fetching posts for category: $category, page: $pageToLoad');
 
-      Query query = firestore.collection('posts')
-          .where('is_deleted', isEqualTo: false);
+      Query query = firestore
+          .collection('posts')
+          .where('is_deleted', isEqualTo: false)
+          .where('pending_review', isEqualTo: false);
 
       // Apply category filter for specific categories, skip for "all"
       if (category == 'watched') {
-        final watchedIds = ref.read(watchedThreadsProvider).threads.keys.toList();
+        final watchedIds =
+            ref.read(watchedThreadsProvider).threads.keys.toList();
         if (watchedIds.isEmpty) {
           final updatedCategoryStates =
               Map<String, CategoryPostsState>.from(state.categoryStates);
@@ -149,10 +192,40 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         if (category != 'all') {
           query = query.where('category', isEqualTo: category);
         }
-        query = query.orderBy('created_at', descending: true);
       }
 
-      if (!isRefresh && !isInitial && categoryState.lastDocument != null && category != 'watched') {
+      // Apply search query filter if not empty
+      if (state.searchQuery.isNotEmpty) {
+        final cleanQuery = state.searchQuery.trim().toLowerCase();
+        final words = cleanQuery.split(RegExp(r'\s+'));
+        if (words.isNotEmpty && words.first.length >= 2) {
+          query = query.where('search_keywords', arrayContains: words.first);
+        }
+      }
+
+      // Apply ordering/sorting
+      if (category == 'C.U.N.T.' || category == 'Scams') {
+        if (state.cuntSortMode == 'highestLoss') {
+          query = query
+              .orderBy('loss_amount', descending: true)
+              .orderBy('created_at', descending: true);
+        } else {
+          query = query.orderBy('created_at', descending: true);
+        }
+      } else {
+        if (state.feedSortMode == 'active') {
+          query = query
+              .orderBy('comment_count', descending: true)
+              .orderBy('created_at', descending: true);
+        } else {
+          query = query.orderBy('created_at', descending: true);
+        }
+      }
+
+      if (!isRefresh &&
+          !isInitial &&
+          categoryState.lastDocument != null &&
+          category != 'watched') {
         query = query.startAfterDocument(categoryState.lastDocument!);
       }
 
@@ -163,16 +236,20 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         final data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id;
         if (data['created_at'] is Timestamp) {
-          data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+          data['created_at'] =
+              (data['created_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['edited_at'] is Timestamp) {
-          data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+          data['edited_at'] =
+              (data['edited_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['deleted_at'] is Timestamp) {
-          data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+          data['deleted_at'] =
+              (data['deleted_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['verified_at'] is Timestamp) {
-          data['verified_at'] = (data['verified_at'] as Timestamp).toDate().toIso8601String();
+          data['verified_at'] =
+              (data['verified_at'] as Timestamp).toDate().toIso8601String();
         }
         return Post.fromMap(data);
       }).toList();
@@ -254,9 +331,11 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
   }
 
   void _initRealTime() {
+    _postsSubscription?.cancel();
     _postsSubscription = firestore
         .collection('posts')
         .where('is_deleted', isEqualTo: false)
+        .where('pending_review', isEqualTo: false)
         .orderBy('created_at', descending: true)
         .limit(_pageSize)
         .snapshots()
@@ -267,16 +346,20 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         final data = doc.data();
         data['id'] = doc.id;
         if (data['created_at'] is Timestamp) {
-          data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+          data['created_at'] =
+              (data['created_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['edited_at'] is Timestamp) {
-          data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+          data['edited_at'] =
+              (data['edited_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['deleted_at'] is Timestamp) {
-          data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+          data['deleted_at'] =
+              (data['deleted_at'] as Timestamp).toDate().toIso8601String();
         }
         if (data['verified_at'] is Timestamp) {
-          data['verified_at'] = (data['verified_at'] as Timestamp).toDate().toIso8601String();
+          data['verified_at'] =
+              (data['verified_at'] as Timestamp).toDate().toIso8601String();
         }
         return Post.fromMap(data);
       }).toList();
@@ -286,8 +369,19 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
 
       // Update "all" category
       final allState = state.getCategoryState('all');
+      var allNewPosts = newPosts;
+      if (state.searchQuery.isNotEmpty) {
+        final cleanQuery = state.searchQuery.trim().toLowerCase();
+        final words = cleanQuery.split(RegExp(r'\s+'));
+        if (words.isNotEmpty && words.first.length >= 2) {
+          final firstWord = words.first;
+          allNewPosts = allNewPosts
+              .where((p) => p.searchKeywords?.contains(firstWord) ?? false)
+              .toList();
+        }
+      }
       updatedCategoryStates['all'] = allState.copyWith(
-        posts: newPosts,
+        posts: allNewPosts,
         lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
       );
 
@@ -297,17 +391,32 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         if (cat == 'all') continue;
 
         final catState = entry.value;
-        final List<Post> filteredNewPosts;
+        var filteredNewPosts =
+            newPosts.where((p) => p.category == cat).toList();
+
+        // If a search query is active, only merge posts that match the search keywords
+        if (state.searchQuery.isNotEmpty) {
+          final cleanQuery = state.searchQuery.trim().toLowerCase();
+          final words = cleanQuery.split(RegExp(r'\s+'));
+          if (words.isNotEmpty && words.first.length >= 2) {
+            final firstWord = words.first;
+            filteredNewPosts = filteredNewPosts
+                .where((p) => p.searchKeywords?.contains(firstWord) ?? false)
+                .toList();
+          }
+        }
+
         if (cat == 'watched') {
-          final watchedIds = ref.read(watchedThreadsProvider).threads.keys.toSet();
-          filteredNewPosts = newPosts.where((p) => watchedIds.contains(p.id)).toList();
-        } else {
-          filteredNewPosts = newPosts.where((p) => p.category == cat).toList();
+          final watchedIds =
+              ref.read(watchedThreadsProvider).threads.keys.toSet();
+          filteredNewPosts =
+              newPosts.where((p) => watchedIds.contains(p.id)).toList();
         }
 
         // Merge into category
         final mergedPostsMap = {for (var p in filteredNewPosts) p.id: p};
-        final remainingPosts = catState.posts.where((p) => !mergedPostsMap.containsKey(p.id));
+        final remainingPosts =
+            catState.posts.where((p) => !mergedPostsMap.containsKey(p.id));
         final updatedCatPosts = [...filteredNewPosts, ...remainingPosts];
         updatedCatPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
@@ -324,6 +433,18 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
 }
 
 // --- RIVERPOD PROVIDERS ---
+class SearchQueryNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void set(String query) {
+    state = query;
+  }
+}
+
+final searchQueryProvider =
+    NotifierProvider<SearchQueryNotifier, String>(SearchQueryNotifier.new);
+
 // Provider Declaration
 final paginatedPostsProvider =
     NotifierProvider<PaginatedPostsNotifier, PaginatedPostsState>(
@@ -368,13 +489,16 @@ final commentsProvider =
       final data = doc.data();
       data['id'] = doc.id;
       if (data['created_at'] is Timestamp) {
-        data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+        data['created_at'] =
+            (data['created_at'] as Timestamp).toDate().toIso8601String();
       }
       if (data['deleted_at'] is Timestamp) {
-        data['deleted_at'] = (data['deleted_at'] as Timestamp).toDate().toIso8601String();
+        data['deleted_at'] =
+            (data['deleted_at'] as Timestamp).toDate().toIso8601String();
       }
       if (data['edited_at'] is Timestamp) {
-        data['edited_at'] = (data['edited_at'] as Timestamp).toDate().toIso8601String();
+        data['edited_at'] =
+            (data['edited_at'] as Timestamp).toDate().toIso8601String();
       }
       return Comment.fromMap(data);
     }).toList();
@@ -476,3 +600,39 @@ class CuntSortNotifier extends Notifier<CuntSortMode> {
 final cuntSortProvider =
     NotifierProvider<CuntSortNotifier, CuntSortMode>(CuntSortNotifier.new);
 
+class HiddenPostsNotifier extends Notifier<Set<String>> {
+  static const _storageKey = 'hidden_posts_list_v1';
+
+  @override
+  Set<String> build() {
+    Future.microtask(_load);
+    return const {};
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_storageKey) ?? [];
+      state = list.toSet();
+    } catch (e) {
+      logger.e('Failed to load hidden posts: $e');
+    }
+  }
+
+  Future<void> hidePost(String postId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_storageKey) ?? [];
+      if (!list.contains(postId)) {
+        list.add(postId);
+        await prefs.setStringList(_storageKey, list);
+        state = list.toSet();
+      }
+    } catch (e) {
+      logger.e('Failed to hide post: $e');
+    }
+  }
+}
+
+final hiddenPostsProvider =
+    NotifierProvider<HiddenPostsNotifier, Set<String>>(HiddenPostsNotifier.new);

@@ -6,49 +6,314 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/admin_roles/$(request.auth.uid));
+    }
+
+    function hasValidInitialPostState() {
+      return request.resource.data.comment_count == 0
+             && request.resource.data.vote_count == 0
+             && request.resource.data.thumbs_up_count == 0
+             && request.resource.data.thumbs_down_count == 0
+             && request.resource.data.partial_count == 0
+             && request.resource.data.funny_count == 0
+             && request.resource.data.is_deleted == false;
+    }
+
+    function isScamCategory(category) {
+      return category == 'C.U.N.T.' || category == 'Scams';
+    }
+
+    function isActivePost(postId) {
+      return exists(/databases/$(database)/documents/posts/$(postId))
+             && get(/databases/$(database)/documents/posts/$(postId)).data.is_deleted == false
+             && get(/databases/$(database)/documents/posts/$(postId)).data.pending_review == false;
+    }
+
+    function isPostOwner(postId, uid) {
+      return (
+        exists(/databases/$(database)/documents/posts/$(postId))
+        && get(/databases/$(database)/documents/posts/$(postId)).data.user_id == uid
+      ) || (
+        exists(/databases/$(database)/documents/posts_private/$(postId))
+        && get(/databases/$(database)/documents/posts_private/$(postId)).data.user_id == uid
+      );
+    }
+
+    function hasStandardPostUpdateShape() {
+      return request.resource.data.keys().hasOnly([
+        'id', 'title', 'content', 'category', 'province_state', 'is_anonymous',
+        'author_username', 'author_verified', 'image_url', 'image_urls', 'monette_area',
+        'created_at', 'updated_at', 'is_deleted', 'pending_review',
+        'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+        'partial_count', 'funny_count', 'search_keywords', 'user_id', 'anonymous_user_id',
+        'truth_meter_score', 'truth_meter_status',
+        'edited_at', 'edit_count', 'deleted_at', 'deleted_by',
+        'admin_verified', 'verified_at', 'verified_by', 'report_count', 'approved_at'
+      ]);
+    }
+
+    function hasScamPostUpdateShape() {
+      return request.resource.data.keys().hasOnly([
+        'id', 'title', 'content', 'category', 'created_at', 'updated_at',
+        'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+        'partial_count', 'funny_count', 'user_id', 'is_anonymous', 'author_username',
+        'author_verified', 'is_deleted', 'pending_review', 'has_images',
+        'scam_location', 'loss_item', 'loss_amount', 'search_keywords',
+        'truth_meter_score', 'truth_meter_status',
+        'deleted_at', 'deleted_by',
+        'admin_verified', 'verified_at', 'verified_by', 'report_count', 'approved_at'
+      ]);
+    }
+
     // Rules for user profiles
     match /user_profiles/{userId} {
       allow read: if true;
-      allow write: if isAuthenticated() && userId == request.auth.uid;
+      allow create: if isAuthenticated() && userId == request.auth.uid
+                    && request.resource.data.reputation_points == 0
+                    && request.resource.data.reputation_level == 0
+                    && request.resource.data.vote_weight == 1.0
+                    && request.resource.data.post_count == 0
+                    && request.resource.data.comment_count == 0
+                    && request.resource.data.vote_count == 0
+                    && request.resource.data.public_reputation == 0
+                    && request.resource.data.anonymous_reputation == 0
+                    && request.resource.data.keys().hasOnly([
+                      'id', 'username', 'created_at', 'updated_at', 'province_state', 'bio',
+                      'reputation_points', 'public_reputation', 'anonymous_reputation',
+                      'reputation_level', 'vote_weight', 'post_count', 'comment_count', 'vote_count'
+                    ])
+                    && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username.lower())).data.uid == userId;
+      allow update: if isAuthenticated() && userId == request.auth.uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                      'reputation_points', 'reputation_level', 'vote_weight',
+                      'post_count', 'comment_count', 'vote_count',
+                      'username', 'id', 'public_reputation', 'anonymous_reputation'
+                    ])
+                    && request.resource.data.keys().hasOnly([
+                      'id', 'username', 'created_at', 'updated_at', 'province_state', 'bio',
+                      'reputation_points', 'public_reputation', 'anonymous_reputation',
+                      'reputation_level', 'vote_weight', 'post_count', 'comment_count', 'vote_count'
+                    ]);
+
+      // Private profile details subcollection (only readable/writeable by the owner)
+      match /private/{docId} {
+        allow read, write: if isAuthenticated() && userId == request.auth.uid;
+      }
+    }
+
+    // Rules for usernames registry (to enforce uniqueness at the database level)
+    match /usernames/{usernameKey} {
+      allow read: if true;
+      allow create: if isAuthenticated()
+                    && request.resource.data.keys().hasOnly(['uid'])
+                    && request.resource.data.uid == request.auth.uid
+                    && usernameKey == getAfter(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.username.lower();
+      allow update, delete: if false;
     }
 
     // Rules for posts
     match /posts/{postId} {
-      allow read: if true;
-      allow create: if isAuthenticated() 
-                    && request.resource.data.user_id == request.auth.uid
-                    && request.resource.data.is_deleted == false
+      allow read: if (resource.data.is_deleted == false && resource.data.pending_review == false)
+                    || isAdmin()
+                    || (
+                      isAuthenticated()
+                      && (
+                        (resource.data.is_anonymous == false && resource.data.user_id == request.auth.uid)
+                        || (
+                          resource.data.is_anonymous == true
+                          && exists(/databases/$(database)/documents/posts_private/$(postId))
+                          && get(/databases/$(database)/documents/posts_private/$(postId)).data.user_id == request.auth.uid
+                        )
+                      )
+                    );
+      allow create: if isAuthenticated()
+                    && hasValidInitialPostState()
                     && (
-                      (request.resource.data.category != 'C.U.N.T.' && request.resource.data.category != 'Scams') 
-                      || (
-                        request.auth.token.firebase.sign_in_provider != 'anonymous'
+                      !isScamCategory(request.resource.data.category)
+                      ? (
+                        request.resource.data.pending_review == false
+                        && request.resource.data.author_verified == (request.resource.data.is_anonymous == false && request.auth.token.email_verified)
+                        && (
+                          request.resource.data.is_anonymous == false
+                            ? (
+                              request.resource.data.user_id == request.auth.uid
+                              && request.resource.data.author_username == get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.username
+                              && request.resource.data.keys().hasOnly([
+                                'id', 'title', 'content', 'category', 'province_state', 'is_anonymous',
+                                'author_username', 'author_verified', 'image_url', 'image_urls', 'monette_area',
+                                'created_at', 'updated_at', 'is_deleted', 'pending_review',
+                                'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+                                'partial_count', 'funny_count', 'search_keywords', 'user_id', 'anonymous_user_id'
+                              ])
+                            )
+                            : (
+                              !request.resource.data.keys().hasAny(['user_id', 'anonymous_user_id'])
+                              && request.resource.data.keys().hasOnly([
+                                'id', 'title', 'content', 'category', 'province_state', 'is_anonymous',
+                                'author_username', 'author_verified', 'image_url', 'image_urls', 'monette_area',
+                                'created_at', 'updated_at', 'is_deleted', 'pending_review',
+                                'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+                                'partial_count', 'funny_count', 'search_keywords'
+                              ])
+                            )
+                        )
+                      )
+                      : (
+                        request.auth.token.email_verified == true
                         && request.resource.data.is_anonymous == false
-                        && request.resource.data.scammer_name is string
+                        && request.resource.data.user_id == request.auth.uid
+                        && request.resource.data.author_username == get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.username
+                        && request.resource.data.author_verified == request.auth.token.email_verified
+                        && request.resource.data.pending_review == true
                         && request.resource.data.scam_location is string
                         && request.resource.data.loss_item is string
                         && request.resource.data.loss_amount is number
+                        && request.resource.data.has_images == true
+                        && !request.resource.data.keys().hasAny(['image_url', 'image_urls'])
+                        && getAfter(/databases/$(database)/documents/posts/$(postId)/private/details).data.image_urls is list
+                        && getAfter(/databases/$(database)/documents/posts/$(postId)/private/details).data.image_urls.size() >= 1
+                        && request.resource.data.keys().hasOnly([
+                          'id', 'title', 'content', 'category', 'created_at', 'updated_at',
+                          'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+                          'partial_count', 'funny_count', 'user_id', 'is_anonymous', 'author_username',
+                          'author_verified', 'is_deleted', 'pending_review', 'has_images',
+                          'scam_location', 'loss_item', 'loss_amount', 'search_keywords'
+                        ])
+                      )
+                    )
+                    && !request.resource.data.keys().hasAny([
+                      'scammer_name', 'scammer_company', 'scammer_phone', 'scammer_email'
+                    ]);
+      allow update: if isAuthenticated()
+                    && (
+                      // Admin can update anything (takedown, verify, approve)
+                      isAdmin()
+                      // Owner can update content, is_deleted, etc. but counts and status are locked down
+                      || (
+                        (
+                          (resource.data.is_anonymous == false && resource.data.user_id == request.auth.uid)
+                          || (resource.data.is_anonymous == true && get(/databases/$(database)/documents/posts_private/$(postId)).data.user_id == request.auth.uid)
+                        )
+                        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                          'comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count',
+                          'partial_count', 'funny_count', 'category', 'created_at',
+                          'id', 'user_id', 'anonymous_user_id', 'is_anonymous', 'author_username',
+                          'author_verified', 'pending_review',
+                          'truth_meter_score', 'truth_meter_status',
+                          'scammer_name', 'scammer_company', 'scammer_phone', 'scammer_email',
+                          'admin_verified', 'verified_at', 'verified_by', 'report_count', 'approved_at'
+                        ])
+                        && (
+                          (!isScamCategory(resource.data.category) && hasStandardPostUpdateShape())
+                          || (
+                            isScamCategory(resource.data.category)
+                            && hasScamPostUpdateShape()
+                            && (
+                              resource.data.pending_review == true
+                              || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['title', 'content', 'scam_location', 'loss_item', 'loss_amount', 'has_images'])
+                            )
+                          )
+                        )
                       )
                     );
-      allow update: if isAuthenticated() 
-                    && (
-                      // Allow author to update content (edit/append), is_deleted (soft delete), etc.
-                      resource.data.user_id == request.auth.uid
-                      // Allow anyone to update vote or comment counts (interactions)
-                      || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comment_count', 'vote_count', 'thumbs_up_count', 'thumbs_down_count', 'partial_count', 'funny_count'])
-                    );
+      allow delete: if isAdmin();
+
+      // Subcollection for private scam details
+      match /private/details {
+        allow read: if isAdmin()
+                      || (isAuthenticated() && get(/databases/$(database)/documents/posts_private/$(postId)).data.user_id == request.auth.uid)
+                      || (
+                        isAuthenticated()
+                        && request.auth.token.email_verified == true
+                        && get(/databases/$(database)/documents/posts/$(postId)).data.pending_review == false
+                        && get(/databases/$(database)/documents/posts/$(postId)).data.is_deleted == false
+                      );
+        allow create: if isAuthenticated()
+                      && request.auth.token.email_verified == true
+                      && request.resource.data.scammer_name is string
+                      && request.resource.data.image_urls is list
+                      && request.resource.data.image_urls.size() >= 1
+                      && (
+                        isAdmin()
+                        || getAfter(/databases/$(database)/documents/posts/$(postId)).data.user_id == request.auth.uid
+                      );
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Private posts owner mapping (only accessible by the owner)
+    match /posts_private/{postId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated()
+                    && request.resource.data.user_id == request.auth.uid
+                    && !exists(/databases/$(database)/documents/posts/$(postId))
+                    && existsAfter(/databases/$(database)/documents/posts/$(postId));
+      allow update, delete: if false;
     }
 
     // Rules for comments
     match /comments/{commentId} {
       allow read: if true;
-      allow create: if isAuthenticated() 
-                    && request.resource.data.anonymous_user_id == request.auth.uid;
+      allow create: if isAuthenticated()
+                    && request.resource.data.is_deleted == false
+                    && exists(/databases/$(database)/documents/posts/$(request.resource.data.post_id))
+                    && get(/databases/$(database)/documents/posts/$(request.resource.data.post_id)).data.is_deleted == false
+                    && get(/databases/$(database)/documents/posts/$(request.resource.data.post_id)).data.pending_review == false
+                    && (
+                      request.resource.data.is_anonymous == false
+                        ? (
+                          request.resource.data.anonymous_user_id == request.auth.uid
+                          && request.resource.data.author_username == get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.username
+                          && request.resource.data.author_verified == request.auth.token.email_verified
+                          && request.resource.data.keys().hasOnly([
+                            'id', 'post_id', 'content', 'is_anonymous', 'author_username',
+                            'author_verified', 'is_deleted', 'created_at', 'anonymous_user_id'
+                          ])
+                        )
+                        : (
+                          !request.resource.data.keys().hasAny(['anonymous_user_id'])
+                          && request.resource.data.author_verified == false
+                          && request.resource.data.keys().hasOnly([
+                            'id', 'post_id', 'content', 'is_anonymous', 'author_username',
+                            'author_verified', 'is_deleted', 'created_at'
+                          ])
+                        )
+                    );
+      allow update, delete: if isAdmin();
     }
 
-    // Rules for votes
+    // Private comments owner mapping (only accessible by the owner)
+    match /comments_private/{commentId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated()
+                    && request.resource.data.user_id == request.auth.uid
+                    && !exists(/databases/$(database)/documents/comments/$(commentId))
+                    && existsAfter(/databases/$(database)/documents/comments/$(commentId));
+      allow update, delete: if false;
+    }
+
+    // Rules for votes (restricted read to owner only)
     match /votes/{voteId} {
-      allow read: if true;
-      allow write: if isAuthenticated() && voteId.matches('^' + request.auth.uid + '_.*');
+      allow read: if isAuthenticated() && voteId.matches('^' + request.auth.uid + '_.*');
+      allow create: if isAuthenticated()
+                    && voteId == request.auth.uid + '_' + request.resource.data.post_id
+                    && request.resource.data.anonymous_user_id == request.auth.uid
+                    && isActivePost(request.resource.data.post_id)
+                    && !isPostOwner(request.resource.data.post_id, request.auth.uid)
+                    && request.resource.data.vote_type in ['thumbs_up', 'partial', 'thumbs_down']
+                    && request.resource.data.keys().hasOnly(['post_id', 'anonymous_user_id', 'vote_type', 'created_at']);
+      allow update: if isAuthenticated()
+                    && voteId == request.auth.uid + '_' + request.resource.data.post_id
+                    && request.resource.data.anonymous_user_id == request.auth.uid
+                    && isActivePost(request.resource.data.post_id)
+                    && !isPostOwner(request.resource.data.post_id, request.auth.uid)
+                    && request.resource.data.vote_type in ['thumbs_up', 'partial', 'thumbs_down']
+                    && request.resource.data.keys().hasOnly(['post_id', 'anonymous_user_id', 'vote_type', 'created_at'])
+                    // Immutable fields
+                    && request.resource.data.post_id == resource.data.post_id
+                    && request.resource.data.anonymous_user_id == resource.data.anonymous_user_id;
+      allow delete: if isAuthenticated() && voteId.matches('^' + request.auth.uid + '_.*');
     }
 
     // Rules for watches
@@ -56,10 +321,21 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && watchId.matches('^' + request.auth.uid + '_.*');
     }
 
-    // Rules for global/trending stats
+    // Rules for global/trending stats (Client can only read; writes restricted to Admin SDK)
     match /stats/{docId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Rules for reporting posts
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && reportId == request.auth.uid + '_' + resource.data.post_id;
+      allow create: if isAuthenticated()
+                    && reportId == request.auth.uid + '_' + request.resource.data.post_id
+                    && request.resource.data.reporter_id == request.auth.uid
+                    && isActivePost(request.resource.data.post_id)
+                    && !isPostOwner(request.resource.data.post_id, request.auth.uid)
+                    && request.resource.data.keys().hasOnly(['reporter_id', 'post_id', 'created_at']);
     }
   }
 }

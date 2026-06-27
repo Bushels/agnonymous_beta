@@ -33,6 +33,7 @@ class Post {
   final DateTime? deletedAt;
   final DateTime? editedAt;
   final int editCount;
+  final bool pendingReview;
 
   // Verification image (required for Input Prices)
   final String? imageUrl;
@@ -75,6 +76,7 @@ class Post {
     this.deletedAt,
     this.editedAt,
     this.editCount = 0,
+    this.pendingReview = false,
     this.imageUrl,
     List<String>? imageUrls,
     this.scammerName,
@@ -124,6 +126,7 @@ class Post {
       editedAt:
           map['edited_at'] != null ? DateTime.parse(map['edited_at']) : null,
       editCount: map['edit_count'] ?? 0,
+      pendingReview: map['pending_review'] ?? false,
       imageUrl: imageUrl,
       imageUrls: imageUrls,
       scammerName: map['scammer_name'],

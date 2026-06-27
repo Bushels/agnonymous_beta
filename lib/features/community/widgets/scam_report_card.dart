@@ -16,6 +16,7 @@ import '../providers/watch_provider.dart';
 import '../providers/auth_provider.dart';
 import 'board_truth_meter.dart';
 import 'comment_section.dart';
+import 'auth_dialog.dart';
 
 class ScamReportCard extends ConsumerStatefulWidget {
   final Post post;
@@ -31,11 +32,85 @@ class ScamReportCard extends ConsumerStatefulWidget {
 
 class _ScamReportCardState extends ConsumerState<ScamReportCard> {
   bool _isCommentsExpanded = false;
+  bool _isCurrentUserAuthor = false;
+  bool _isLoading = false;
+  Map<String, dynamic>? _privateDetails;
+  bool _loadingDetails = false;
 
-  bool get _isOwner {
-    final userId = firebaseAuth.currentUser?.uid;
-    return userId != null && widget.post.userId == userId;
+  @override
+  void initState() {
+    super.initState();
+    _checkOwnership();
   }
+
+  @override
+  void didUpdateWidget(ScamReportCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id ||
+        oldWidget.post.userId != widget.post.userId) {
+      _checkOwnership();
+    }
+  }
+
+  void _checkOwnership() async {
+    final userId = firebaseAuth.currentUser?.uid;
+    if (userId == null) return;
+
+    if (widget.post.userId == userId) {
+      if (mounted) {
+        setState(() => _isCurrentUserAuthor = true);
+        _loadPrivateDetails();
+      }
+      return;
+    }
+
+    // Check posts_private for anonymous posts
+    try {
+      final privateDoc =
+          await firestore.collection('posts_private').doc(widget.post.id).get();
+      if (privateDoc.exists && mounted) {
+        setState(() => _isCurrentUserAuthor = true);
+      } else {
+        if (mounted) setState(() => _isCurrentUserAuthor = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCurrentUserAuthor = false);
+    }
+    _loadPrivateDetails();
+  }
+
+  void _loadPrivateDetails() async {
+    final auth = ref.read(authProvider);
+    final isEmailVerified = auth.user != null &&
+        !auth.user!.isAnonymous &&
+        auth.profile?.emailVerified == true;
+    final isAdmin = ref.read(isAdminProvider).value ?? false;
+
+    if (isEmailVerified || _isOwner || isAdmin) {
+      if (mounted) setState(() => _loadingDetails = true);
+      try {
+        final doc = await firestore
+            .collection('posts')
+            .doc(widget.post.id)
+            .collection('private')
+            .doc('details')
+            .get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _privateDetails = doc.data();
+            _loadingDetails = false;
+          });
+        } else {
+          if (mounted) setState(() => _loadingDetails = false);
+        }
+      } catch (e) {
+        logger.w('Failed to load private scam details: $e');
+        if (mounted) setState(() => _loadingDetails = false);
+      }
+    }
+  }
+
+  bool get _isOwner => _isCurrentUserAuthor;
 
   bool _canDeletePost() {
     final timeSinceCreation = DateTime.now().difference(widget.post.createdAt);
@@ -69,7 +144,7 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
     );
   }
 
-  Future<void> _showDeleteConfirmation(BuildContext context) async {
+  Future<void> _showDeleteConfirmation() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -78,7 +153,8 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
         ),
-        title: const Text('Delete Post?', style: TextStyle(color: Colors.white)),
+        title:
+            const Text('Delete Post?', style: TextStyle(color: Colors.white)),
         content: const Text(
           'This action cannot be undone.',
           style: TextStyle(color: Colors.white70),
@@ -90,18 +166,19 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444))),
+            child: const Text('Delete',
+                style: TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
     );
 
     if (confirmed == true && mounted) {
-      await _deletePost(context);
+      await _deletePost();
     }
   }
 
-  Future<void> _deletePost(BuildContext context) async {
+  Future<void> _deletePost() async {
     try {
       final userId = firebaseAuth.currentUser?.uid;
       if (userId == null) throw 'Not authenticated';
@@ -112,33 +189,27 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
         'deleted_by': userId,
       });
 
-      await firestore.collection('stats').doc('global').update({
-        'total_posts': FieldValue.increment(-1),
-      });
-
       final currentCategories =
           ref.read(paginatedPostsProvider).categoryStates.keys.toList();
       for (final category in currentCategories) {
         ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
       }
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Post deleted'),
-            backgroundColor: Color(0xFF25271F),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Post deleted'),
+          backgroundColor: Color(0xFF25271F),
+        ),
+      );
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting post: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error deleting post: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -148,8 +219,6 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
 
     try {
       final anonId = await AnonymousIdService.getAnonymousId();
-      final profile = ref.read(authProvider).profile;
-      final weight = profile != null ? profile.voteWeight.round() : 1;
 
       final rateLimiter = RateLimiter();
       final rateLimitError = rateLimiter.canVote(widget.post.id);
@@ -157,73 +226,22 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
         throw rateLimitError;
       }
 
-      if (widget.post.userId == anonId) {
+      if (_isCurrentUserAuthor) {
         throw 'You cannot vote on your own post';
       }
 
-      final voteRef = firestore.collection('votes').doc('${anonId}_${widget.post.id}');
-      final postRef = firestore.collection('posts').doc(widget.post.id);
-      final statsRef = firestore.collection('stats').doc('global');
+      final voteRef =
+          firestore.collection('votes').doc('${anonId}_${widget.post.id}');
 
-      bool isNewVote = false;
-
-      await firestore.runTransaction((transaction) async {
-        final voteSnapshot = await transaction.get(voteRef);
-        final postSnapshot = await transaction.get(postRef);
-
-        if (!postSnapshot.exists) {
-          throw 'Post not found';
-        }
-
-        final postData = postSnapshot.data() as Map<String, dynamic>;
-        final postAuthorId = postData['user_id'] ?? postData['anonymous_user_id'];
-        if (postAuthorId == anonId) {
-          throw 'You cannot vote on your own post';
-        }
-
-        String? oldVoteType;
-        if (voteSnapshot.exists) {
-          final oldVoteData = voteSnapshot.data() as Map<String, dynamic>;
-          oldVoteType = oldVoteData['vote_type'] as String?;
-        }
-
-        transaction.set(voteRef, {
-          'post_id': widget.post.id,
-          'anonymous_user_id': anonId,
-          'vote_type': voteType,
-          'created_at': FieldValue.serverTimestamp(),
-        });
-
-        final postUpdates = <String, dynamic>{};
-        if (oldVoteType != null) {
-          if (oldVoteType != voteType) {
-            postUpdates['${oldVoteType}_count'] = FieldValue.increment(-weight);
-            postUpdates['${voteType}_count'] = FieldValue.increment(weight);
-          }
-        } else {
-          isNewVote = true;
-          postUpdates['${voteType}_count'] = FieldValue.increment(weight);
-          postUpdates['vote_count'] = FieldValue.increment(1);
-
-          transaction.set(
-            statsRef,
-            {
-              'total_votes': FieldValue.increment(1),
-            },
-            SetOptions(merge: true),
-          );
-        }
-
-        if (postUpdates.isNotEmpty) {
-          transaction.update(postRef, postUpdates);
-        }
+      // Write vote document to Firestore directly
+      await voteRef.set({
+        'post_id': widget.post.id,
+        'anonymous_user_id': anonId,
+        'vote_type': voteType,
+        'created_at': FieldValue.serverTimestamp(),
       });
 
       rateLimiter.recordVote(widget.post.id);
-
-      if (isNewVote && profile != null) {
-        await ref.read(authProvider.notifier).addReputationPoints(1, 'vote');
-      }
 
       await HapticFeedback.lightImpact();
 
@@ -234,10 +252,11 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
       }
 
       final voteEmoji = {
-        'thumbs_up': '\u{1F44D}',
-        'partial': '\u{1F914}',
-        'thumbs_down': '\u{1F44E}',
-      }[voteType] ?? '';
+            'thumbs_up': '\u{1F44D}',
+            'partial': '\u{1F914}',
+            'thumbs_down': '\u{1F44E}',
+          }[voteType] ??
+          '';
 
       scaffoldMessenger.showSnackBar(
         SnackBar(
@@ -292,7 +311,8 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+              icon: const Icon(Icons.close_rounded,
+                  color: Colors.white, size: 28),
               onPressed: () => Navigator.pop(context),
             ),
           ],
@@ -303,6 +323,25 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
+    final isEmailVerified = auth.user != null &&
+        !auth.user!.isAnonymous &&
+        auth.profile?.emailVerified == true;
+    final isAdmin = ref.watch(isAdminProvider).value ?? false;
+    final showDetails = isEmailVerified || _isOwner || isAdmin;
+
+    final List<String> proofImages = widget.post.isScam
+        ? (showDetails && _privateDetails != null
+            ? List<String>.from(_privateDetails!['image_urls'] ?? [])
+            : const <String>[])
+        : widget.post.imageUrls;
+
+    if (_privateDetails == null && !_loadingDetails && showDetails) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadPrivateDetails();
+      });
+    }
+
     final currencyFormat = NumberFormat.simpleCurrency(decimalDigits: 0);
     const alertColor = Color(0xFFEF4444);
     final voteStatsAsync = ref.watch(voteStatsProvider(widget.post.id));
@@ -314,7 +353,8 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
       decoration: BoxDecoration(
         color: BoardColors.paper,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: alertColor.withValues(alpha: 0.35), width: 1.5),
+        border:
+            Border.all(color: alertColor.withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: alertColor.withValues(alpha: 0.08),
@@ -332,31 +372,56 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
             // Alert Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: alertColor.withValues(alpha: 0.12),
+              color: widget.post.pendingReview
+                  ? Colors.orange.withValues(alpha: 0.12)
+                  : alertColor.withValues(alpha: 0.12),
               child: Row(
                 children: [
-                  const FaIcon(FontAwesomeIcons.triangleExclamation, color: Color(0xFFEF4444), size: 14),
+                  FaIcon(
+                    widget.post.pendingReview
+                        ? FontAwesomeIcons.hourglassHalf
+                        : FontAwesomeIcons.triangleExclamation,
+                    color: widget.post.pendingReview
+                        ? Colors.orange
+                        : const Color(0xFFEF4444),
+                    size: 14,
+                  ),
                   const SizedBox(width: 8),
                   Text(
-                    'VERIFIED USER C.U.N.T. REPORT',
+                    widget.post.pendingReview
+                        ? 'PENDING MODERATION C.U.N.T. REPORT'
+                        : (widget.post.authorVerified
+                            ? 'VERIFIED USER C.U.N.T. REPORT'
+                            : 'REGISTERED USER C.U.N.T. REPORT'),
                     style: BoardText.meta.copyWith(
-                      color: const Color(0xFFEF4444),
+                      color: widget.post.pendingReview
+                          ? Colors.orange
+                          : const Color(0xFFEF4444),
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1.1,
                     ),
                   ),
+                  if (widget.post.pendingReview) ...[
+                    const SizedBox(width: 8),
+                    _buildAdminApprovalButtons(),
+                  ],
                   const Spacer(),
                   if (widget.post.lossAmount != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                        color: widget.post.pendingReview
+                            ? Colors.orange.withValues(alpha: 0.2)
+                            : const Color(0xFFEF4444).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         currencyFormat.format(widget.post.lossAmount),
                         style: BoardText.meta.copyWith(
-                          color: const Color(0xFFFCA5A5),
+                          color: widget.post.pendingReview
+                              ? const Color(0xFFFCD34D)
+                              : const Color(0xFFFCA5A5),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -371,18 +436,21 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Title & Meta
-                  Text(widget.post.title, style: BoardText.title.copyWith(fontSize: 21)),
+                  Text(widget.post.title,
+                      style: BoardText.title.copyWith(fontSize: 21)),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
                         'Reported by: ${widget.post.authorUsername ?? "Verified Farmer"}',
-                        style: BoardText.meta.copyWith(color: BoardColors.muted),
+                        style:
+                            BoardText.meta.copyWith(color: BoardColors.muted),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         '•  ${DateFormat.yMMMd().format(widget.post.createdAt)}',
-                        style: BoardText.meta.copyWith(color: BoardColors.muted),
+                        style:
+                            BoardText.meta.copyWith(color: BoardColors.muted),
                       ),
                     ],
                   ),
@@ -397,76 +465,140 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: BoardColors.line),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const FaIcon(FontAwesomeIcons.solidAddressCard, color: BoardColors.amber, size: 16),
-                            const SizedBox(width: 8),
-                            Text(
-                              'ACCUSED DETAILS',
-                              style: BoardText.meta.copyWith(
-                                color: BoardColors.amber,
-                                fontWeight: FontWeight.w800,
-                              ),
+                    child: showDetails
+                        ? (_privateDetails != null
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const FaIcon(
+                                          FontAwesomeIcons.solidAddressCard,
+                                          color: BoardColors.amber,
+                                          size: 16),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'ACCUSED DETAILS',
+                                        style: BoardText.meta.copyWith(
+                                          color: BoardColors.amber,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(
+                                      color: BoardColors.line, height: 16),
+                                  _buildContactRow(
+                                    context,
+                                    icon: FontAwesomeIcons.solidUser,
+                                    label: 'Name',
+                                    value: _privateDetails?['scammer_name'] ??
+                                        'Unknown',
+                                  ),
+                                  if (_privateDetails?['scammer_company'] !=
+                                          null &&
+                                      _privateDetails!['scammer_company']!
+                                          .toString()
+                                          .isNotEmpty)
+                                    _buildContactRow(
+                                      context,
+                                      icon: FontAwesomeIcons.building,
+                                      label: 'Company',
+                                      value:
+                                          _privateDetails!['scammer_company']!
+                                              .toString(),
+                                    ),
+                                  if (_privateDetails?['scammer_phone'] !=
+                                          null &&
+                                      _privateDetails!['scammer_phone']!
+                                          .toString()
+                                          .isNotEmpty)
+                                    _buildContactRow(
+                                      context,
+                                      icon: FontAwesomeIcons.phone,
+                                      label: 'Phone',
+                                      value: _privateDetails!['scammer_phone']!
+                                          .toString(),
+                                      copyable: true,
+                                    ),
+                                  if (_privateDetails?['scammer_email'] !=
+                                          null &&
+                                      _privateDetails!['scammer_email']!
+                                          .toString()
+                                          .isNotEmpty)
+                                    _buildContactRow(
+                                      context,
+                                      icon: FontAwesomeIcons.envelope,
+                                      label: 'Email',
+                                      value: _privateDetails!['scammer_email']!
+                                          .toString(),
+                                      copyable: true,
+                                    ),
+                                  _buildContactRow(
+                                    context,
+                                    icon: FontAwesomeIcons.locationDot,
+                                    label: 'Location',
+                                    value:
+                                        widget.post.scamLocation ?? 'Unknown',
+                                  ),
+                                ],
+                              )
+                            : const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: BoardColors.amber),
+                                  ),
+                                ),
+                              ))
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 8),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.lock_rounded,
+                                    color: Colors.orange, size: 36),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Accused PII Hidden',
+                                  style: BoardText.title.copyWith(
+                                      fontSize: 16, color: Colors.white),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'To prevent abuse and protect privacy, debtor details are only visible to signed-in users with a verified email.',
+                                  textAlign: TextAlign.center,
+                                  style: BoardText.body.copyWith(
+                                      color: BoardColors.muted, fontSize: 13),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        const Divider(color: BoardColors.line, height: 16),
-                        _buildContactRow(
-                          context,
-                          icon: FontAwesomeIcons.user,
-                          label: 'Name',
-                          value: widget.post.scammerName ?? 'Unknown',
-                        ),
-                        if (widget.post.scammerCompany != null && widget.post.scammerCompany!.isNotEmpty)
-                          _buildContactRow(
-                            context,
-                            icon: FontAwesomeIcons.building,
-                            label: 'Company',
-                            value: widget.post.scammerCompany!,
                           ),
-                        if (widget.post.scammerPhone != null && widget.post.scammerPhone!.isNotEmpty)
-                          _buildContactRow(
-                            context,
-                            icon: FontAwesomeIcons.phone,
-                            label: 'Phone',
-                            value: widget.post.scammerPhone!,
-                            copyable: true,
-                          ),
-                        if (widget.post.scammerEmail != null && widget.post.scammerEmail!.isNotEmpty)
-                          _buildContactRow(
-                            context,
-                            icon: FontAwesomeIcons.envelope,
-                            label: 'Email',
-                            value: widget.post.scammerEmail!,
-                            copyable: true,
-                          ),
-                        _buildContactRow(
-                          context,
-                          icon: FontAwesomeIcons.locationDot,
-                          label: 'Location',
-                          value: widget.post.scamLocation ?? 'Unknown',
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 14),
 
                   // Loss details
                   Row(
                     children: [
-                      const FaIcon(FontAwesomeIcons.boxOpen, color: BoardColors.muted, size: 14),
+                      const FaIcon(FontAwesomeIcons.boxOpen,
+                          color: BoardColors.muted, size: 14),
                       const SizedBox(width: 8),
                       Text(
                         'Loss Item: ',
-                        style: BoardText.body.copyWith(color: BoardColors.muted, fontWeight: FontWeight.bold),
+                        style: BoardText.body.copyWith(
+                            color: BoardColors.muted,
+                            fontWeight: FontWeight.bold),
                       ),
                       Expanded(
                         child: Text(
                           widget.post.lossItem ?? 'Not specified',
-                          style: BoardText.body.copyWith(color: BoardColors.ink),
+                          style:
+                              BoardText.body.copyWith(color: BoardColors.ink),
                         ),
                       ),
                     ],
@@ -480,15 +612,16 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                   ),
 
                   // Proof Images Gallery
-                  if (widget.post.imageUrls.isNotEmpty) ...[
+
+                  if (proofImages.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     SizedBox(
                       height: 90,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
-                        itemCount: widget.post.imageUrls.length,
+                        itemCount: proofImages.length,
                         itemBuilder: (context, index) {
-                          final imageUrl = widget.post.imageUrls[index];
+                          final imageUrl = proofImages[index];
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: InkWell(
@@ -501,12 +634,15 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                                   width: 120,
                                   height: 90,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
                                     width: 120,
                                     height: 90,
                                     color: BoardColors.line,
                                     alignment: Alignment.center,
-                                    child: const Icon(Icons.broken_image_rounded, color: BoardColors.muted),
+                                    child: const Icon(
+                                        Icons.broken_image_rounded,
+                                        color: BoardColors.muted),
                                   ),
                                 ),
                               ),
@@ -520,7 +656,7 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                   // Action Row & Truth Meter
                   const SizedBox(height: 16),
                   _buildActionsRow(isWatched),
-                  
+
                   const SizedBox(height: 12),
                   voteStatsAsync.when(
                     loading: () => const Center(
@@ -537,12 +673,15 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
                       ),
                     ),
                     data: (stats) {
-                      final directionalVotes = stats.thumbsUpVotes + stats.thumbsDownVotes;
+                      final directionalVotes =
+                          stats.thumbsUpVotes + stats.thumbsDownVotes;
                       final truthScore = directionalVotes > 0
-                          ? (stats.thumbsUpVotes / directionalVotes * 100).clamp(0.0, 100.0)
+                          ? (stats.thumbsUpVotes / directionalVotes * 100)
+                              .clamp(0.0, 100.0)
                           : 50.0;
-                      final boardSignal =
-                          stats.thumbsUpVotes + stats.partialVotes + stats.thumbsDownVotes;
+                      final boardSignal = stats.thumbsUpVotes +
+                          stats.partialVotes +
+                          stats.thumbsDownVotes;
 
                       TruthMeterStatus status;
                       if (boardSignal == 0) {
@@ -621,7 +760,8 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
               onTap: () => _copyToClipboard(context, value, label),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4.0),
-                child: FaIcon(FontAwesomeIcons.copy, size: 12, color: BoardColors.amber),
+                child: FaIcon(FontAwesomeIcons.copy,
+                    size: 12, color: BoardColors.amber),
               ),
             ),
         ],
@@ -632,13 +772,49 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
   Widget _buildActionsRow(bool isWatched) {
     return Row(
       children: [
-        const FaIcon(FontAwesomeIcons.comment, size: 14, color: BoardColors.muted),
+        const FaIcon(FontAwesomeIcons.comment,
+            size: 14, color: BoardColors.muted),
         const SizedBox(width: 6),
         Text(
           '${widget.post.commentCount} Comments',
           style: BoardText.meta.copyWith(color: BoardColors.muted),
         ),
         const Spacer(),
+        // Hide button
+        TextButton.icon(
+          onPressed: () {
+            ref.read(hiddenPostsProvider.notifier).hidePost(widget.post.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Report hidden locally')),
+            );
+          },
+          icon: const Icon(Icons.visibility_off_outlined,
+              size: 14, color: BoardColors.muted),
+          label: const Text('Hide',
+              style: TextStyle(color: BoardColors.muted, fontSize: 11)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+        const SizedBox(width: 6),
+        // Report button (if not owner)
+        if (!_isOwner) ...[
+          TextButton.icon(
+            onPressed: _reportPost,
+            icon:
+                const Icon(Icons.flag_outlined, size: 14, color: Colors.orange),
+            label: const Text('Report',
+                style: TextStyle(color: Colors.orange, fontSize: 11)),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
         IconButton(
           icon: FaIcon(
             isWatched ? FontAwesomeIcons.solidEye : FontAwesomeIcons.eye,
@@ -646,13 +822,177 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
             color: isWatched ? BoardColors.amber : BoardColors.muted,
           ),
           onPressed: _toggleWatch,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
         ),
-        if (_isOwner && _canDeletePost())
+        if (_isOwner && _canDeletePost()) ...[
+          const SizedBox(width: 6),
           IconButton(
-            icon: const FaIcon(FontAwesomeIcons.trashCan, size: 14, color: Color(0xFFEF4444)),
-            onPressed: () => _showDeleteConfirmation(context),
+            icon: const FaIcon(FontAwesomeIcons.trashCan,
+                size: 14, color: Color(0xFFEF4444)),
+            onPressed: _showDeleteConfirmation,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
           ),
+        ],
       ],
     );
+  }
+
+  Future<void> _reportPost() async {
+    final uid = firebaseAuth.currentUser?.uid;
+    if (uid == null) {
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => AuthDialog(ref: ref),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please sign in or register to submit a report.')),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: const Text('Report C.U.N.T. Entry?',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Flag this entry for moderator review. Reported entries are hidden from your feed immediately and investigated.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Report',
+                style: TextStyle(
+                    color: Colors.orange, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+    if (_isLoading) return;
+
+    try {
+      setState(() => _isLoading = true);
+      // Save report document
+      await firestore
+          .collection('reports')
+          .doc('${uid}_${widget.post.id}')
+          .set({
+        'reporter_id': uid,
+        'post_id': widget.post.id,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      // Hide it locally immediately
+      await ref.read(hiddenPostsProvider.notifier).hidePost(widget.post.id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Report submitted. Entry has been hidden.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to submit report: $e'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Widget _buildAdminApprovalButtons() {
+    final isAdmin = ref.watch(isAdminProvider).value ?? false;
+    if (!isAdmin) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextButton.icon(
+          onPressed: _approvePost,
+          icon: const Icon(Icons.check_circle_outline_rounded,
+              color: BoardColors.green, size: 14),
+          label: const Text('Approve',
+              style: TextStyle(
+                  color: BoardColors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          onPressed: _showDeleteConfirmation,
+          icon: const Icon(Icons.delete_outline_rounded,
+              color: Color(0xFFEF4444), size: 14),
+          label: const Text('Delete',
+              style: TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _approvePost() async {
+    if (_isLoading) return;
+    try {
+      setState(() => _isLoading = true);
+      await firestore.collection('posts').doc(widget.post.id).update({
+        'pending_review': false,
+        'approved_at': FieldValue.serverTimestamp(),
+      });
+
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      for (final category in currentCategories) {
+        ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Report approved and published to registry.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to approve report: $e'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }

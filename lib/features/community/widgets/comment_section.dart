@@ -124,39 +124,42 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       }
 
       final commentDoc = firestore.collection('comments').doc();
+      final commentId = commentDoc.id;
       final anonymousId = await AnonymousIdService.getAnonymousId();
-      
+
       final auth = ref.read(authProvider);
       final isRegistered = auth.user != null && !auth.user!.isAnonymous;
       final commentAsRegistered = isRegistered && !_isAnonymousComment;
+      final isAnonymous = !commentAsRegistered;
+
+      final Map<String, dynamic> commentPayload = {
+        'id': commentId,
+        'post_id': widget.post.id,
+        'content': sanitizedContent,
+        'is_anonymous': isAnonymous,
+        'author_username':
+            commentAsRegistered ? auth.profile?.username : _alias,
+        'author_verified':
+            commentAsRegistered && (auth.user?.emailVerified ?? false),
+        'is_deleted': false,
+        'created_at': FieldValue.serverTimestamp(),
+      };
+
+      if (!isAnonymous) {
+        commentPayload['anonymous_user_id'] = anonymousId;
+      }
 
       await firestore.runTransaction((transaction) async {
-        transaction.set(commentDoc, {
-          'post_id': widget.post.id,
-          'anonymous_user_id': anonymousId,
-          'content': sanitizedContent,
-          'is_anonymous': !commentAsRegistered,
-          'author_username': commentAsRegistered ? auth.profile?.username : _alias,
-          'author_verified': commentAsRegistered,
-          'is_deleted': false,
-          'created_at': FieldValue.serverTimestamp(),
-        });
+        transaction.set(commentDoc, commentPayload);
 
-        // Increment comment count on the post
-        final postRef = firestore.collection('posts').doc(widget.post.id);
-        transaction.update(postRef, {
-          'comment_count': FieldValue.increment(1),
-        });
-
-        // Increment global stats comment count
-        final statsRef = firestore.collection('stats').doc('global');
-        transaction.set(
-          statsRef,
-          {
-            'total_comments': FieldValue.increment(1),
-          },
-          SetOptions(merge: true),
-        );
+        if (isAnonymous) {
+          final privateRef =
+              firestore.collection('comments_private').doc(commentId);
+          transaction.set(privateRef, {
+            'user_id': anonymousId,
+            'created_at': FieldValue.serverTimestamp(),
+          });
+        }
       });
 
       await ref.read(watchedThreadsProvider.notifier).watchDetails(
@@ -370,7 +373,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     final profile = auth.profile;
     final isRegistered = profile != null && !_isAnonymousComment;
 
-    final Color accentColor = isRegistered ? BoardColors.sky : BoardColors.green;
+    final Color accentColor =
+        isRegistered ? BoardColors.sky : BoardColors.green;
     final bool isHighlighted = isRegistered || _hasCustomAlias;
 
     return InkWell(

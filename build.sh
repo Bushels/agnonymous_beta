@@ -10,8 +10,8 @@ export PATH="$PWD/flutter/bin:$PATH"
 flutter doctor
 flutter pub get
 
-# Build web with env vars (passed from Vercel)
-flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+# Build web
+flutter build web --release
 
 # Copy the updated Vercel production configuration containing the correct CSP rules to build/web
 cp deploy/vercel.prod.json build/web/vercel.json

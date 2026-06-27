@@ -102,54 +102,9 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
       );
     }
 
-    var filteredPosts = categoryState.posts;
-
-    // Apply search filter (category is already handled by loading specific category)
-    if (widget.searchQuery.isNotEmpty) {
-      final query = widget.searchQuery.toLowerCase();
-      filteredPosts = filteredPosts
-          .where((post) =>
-              post.title.toLowerCase().contains(query) ||
-              post.content.toLowerCase().contains(query) ||
-              (post.monetteArea?.toLowerCase().contains(query) ?? false) ||
-              post.category.toLowerCase().contains(query) ||
-              (post.scammerName?.toLowerCase().contains(query) ?? false) ||
-              (post.scammerEmail?.toLowerCase().contains(query) ?? false) ||
-              (post.scammerPhone?.toLowerCase().contains(query) ?? false) ||
-              (post.scammerCompany?.toLowerCase().contains(query) ?? false) ||
-              (post.scamLocation?.toLowerCase().contains(query) ?? false) ||
-              (post.lossItem?.toLowerCase().contains(query) ?? false))
-          .toList();
-    }
-
-    // Apply sort mode
-    if (widget.selectedCategory == 'C.U.N.T.' || widget.selectedCategory == 'Scams') {
-      final scamsSort = ref.watch(cuntSortProvider);
-      if (scamsSort == CuntSortMode.highestLoss) {
-        filteredPosts = List.from(filteredPosts)
-          ..sort((a, b) {
-            final aLoss = a.lossAmount ?? 0.0;
-            final bLoss = b.lossAmount ?? 0.0;
-            final lossCompare = bLoss.compareTo(aLoss);
-            if (lossCompare != 0) return lossCompare;
-            return b.createdAt.compareTo(a.createdAt);
-          });
-      } else {
-        filteredPosts = List.from(filteredPosts)
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      }
-    } else {
-      final sortMode = ref.watch(feedSortModeProvider);
-      if (sortMode == FeedSortMode.active) {
-        // Sort by comment activity, then by created_at for ties.
-        filteredPosts = List.from(filteredPosts)
-          ..sort((a, b) {
-            final commentCompare = b.commentCount.compareTo(a.commentCount);
-            if (commentCompare != 0) return commentCompare;
-            return b.createdAt.compareTo(a.createdAt);
-          });
-      }
-    }
+    final hiddenPosts = ref.watch(hiddenPostsProvider);
+    final filteredPosts =
+        categoryState.posts.where((p) => !hiddenPosts.contains(p.id)).toList();
 
     // Empty state
     if (filteredPosts.isEmpty && !categoryState.isLoading) {

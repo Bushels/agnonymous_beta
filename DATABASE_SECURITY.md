@@ -2,357 +2,166 @@
 
 ## 🔒 Security Layers Implemented
 
-This document outlines the multiple layers of security and data integrity protection implemented in the Agnonymous Beta database.
-
----
-
-## 📊 Current Protection Status
-
-### ✅ **Installed Migrations**
-
-| Migration | Status | Purpose |
-|-----------|--------|---------|
-| `001_fix_vote_types.sql` | ✅ Verified | Ensures vote types are correct |
-| `002_install_comment_count_triggers.sql` | ✅ Installed | Auto-updates comment counts |
-| `003_prevent_comment_post_updates.sql` | ✅ Installed | Prevents moving comments between posts |
-| `004_optional_hardening_checks.sql` | ⏳ Optional | Additional constraints and validations |
+This document outlines the defense-in-depth security model implemented in Agnonymous Beta, securing the anonymous posting board, protecting user privacy, preventing de-anonymization, and protecting derived metrics from manipulation.
 
 ---
 
 ## 🛡️ Defense-in-Depth Security Model
 
+```
++--------------------------------------------------------+
+|           Layer 1: Application Sanitization            |
+|       (Input sanitization, HTML escaping, XSS block)   |
++--------------------------------------------------------+
+                           |
+                           v
++--------------------------------------------------------+
+|           Layer 2: Cloud Firestore Rules               |
+|      (Access control, field immutability, schemas)     |
++--------------------------------------------------------+
+                           |
+                           v
++--------------------------------------------------------+
+|           Layer 3: Cloud Storage Rules                 |
+|       (Path prefixes, size limits, JPEG content check) |
++--------------------------------------------------------+
+                           |
+                           v
++--------------------------------------------------------+
+|           Layer 4: Cloud Functions Triggers            |
+|     (Aggregations, derived counts, reputation logic)    |
++--------------------------------------------------------+
+                           |
+                           v
++--------------------------------------------------------+
+|           Layer 5: PII Lock & Moderation Flow          |
+|    (Email verification requirements, pending banners)  |
++--------------------------------------------------------+
+```
+
+---
+
 ### **Layer 1: Application-Level Protection**
 
-**Location:** `lib/main.dart`, `lib/create_post_screen.dart`
+**Files:** `lib/core/utils/helpers.dart`, `lib/create_post_screen.dart`, `lib/features/community/screens/create_scam_report_screen.dart`
 
 1. **Input Sanitization (XSS Prevention)**
    - Function: `sanitizeInput()`
-   - Removes HTML tags
-   - Decodes HTML entities
-   - Applied to: post titles, content, comments
+   - Removes HTML tags and decodes entities.
+   - Applied to all user-submitted text fields (post/report titles, content, scam fields).
 
-2. **Input Validation**
-   - Title: 1-100 characters (post-sanitization)
-   - Content: 10-2000 characters (post-sanitization)
-   - Category: Must be from predefined list
+2. **Size and Format Validation**
+   - Title: 1-100 characters.
+   - Content: 10-2000 characters.
+   - Category: Checked against a list of approved options (e.g. 'Monette', 'C.U.N.T.').
 
-3. **Anonymous User IDs**
-   - UUID-based anonymous IDs
-   - No personal information stored
-   - Province/state tracking only
+3. **Anonymous Identity Splitting**
+   - If a post or comment is published anonymously, the client omits user identifiers (`user_id` / `anonymous_user_id`) from the public document.
+   - A corresponding private record is written to `/posts_private/{postId}` or `/comments_private/{commentId}` containing the owner's UID. This allows owners to edit/delete without exposing their UID in the public feed.
 
 ---
 
-### **Layer 2: Database Triggers**
+### **Layer 2: Cloud Firestore Security Rules**
 
-#### **Comment Count Integrity Triggers**
+**File:** `firestore.rules`
 
-**File:** `database_migrations/002_install_comment_count_triggers.sql`
+Firestore Security Rules enforce strict access controls and field immutability directly in the database layer.
 
-```sql
--- Automatically increments comment_count on INSERT
-CREATE TRIGGER trg_comment_count_insert
-  AFTER INSERT ON comments
-  FOR EACH ROW EXECUTE FUNCTION update_post_comment_count();
+1. **Public/Private Split for Profiles**
+   - `/user_profiles/{uid}` is readable by anyone, but writes are restricted to the owner (`request.auth.uid == uid`). Writing `email` or `email_verified` fields to this public document is rejected.
+   - Private subcollection `/user_profiles/{uid}/private/info` stores sensitive email details. Read/Write permissions are granted only if the authenticated user's UID matches the path identifier (`request.auth.uid == uid`).
 
--- Automatically decrements comment_count on DELETE (with GREATEST protection)
-CREATE TRIGGER trg_comment_count_delete
-  AFTER DELETE ON comments
-  FOR EACH ROW EXECUTE FUNCTION update_post_comment_count();
-```
+2. **Derived Metrics Immutability**
+   - Users are prohibited from directly modifying counts, stats, and reputation points.
+   - Security rules block any write that attempts to alter: `comment_count`, `vote_count`, `thumbs_up_count`, `thumbs_down_count`, `partial_count`, `funny_count`, and global `stats` counters.
 
-**Protection:** Ensures comment counts are always accurate, even if app code fails.
+3. **Post and Comment Creation Rules**
+   - For anonymous creations: rules verify that no `user_id` or `anonymous_user_id` fields are present in the public record.
+   - For registered creations: rules verify that `user_id == request.auth.uid`.
+   - Update permissions check that the requester owns the post via the corresponding `/posts_private/{postId}` document:
+     `get(/databases/$(database)/documents/posts_private/$(postId)).data.user_id == request.auth.uid`
 
-#### **Comment Post Protection Trigger**
-
-**File:** `database_migrations/003_prevent_comment_post_updates.sql`
-
-```sql
--- Prevents changing comment.post_id after creation
-CREATE TRIGGER trg_prevent_comment_post_update
-  BEFORE UPDATE ON comments
-  FOR EACH ROW
-  WHEN (OLD.post_id IS DISTINCT FROM NEW.post_id)
-  EXECUTE FUNCTION prevent_comment_post_update();
-```
-
-**Protection:**
-- ✅ Prevents comment count corruption
-- ✅ Protects user anonymity (can't correlate by moving comments)
-- ✅ Maintains comment threading integrity
-
-**Error Message:** `"Changing comment post_id is not allowed. Delete and recreate instead."`
+4. **Vote Visibility**
+   - Reads on `/votes/{voteId}` are restricted. A user can only read their own vote documents (ID matches `^authUid_.*`).
 
 ---
 
-### **Layer 3: Database Constraints** (Optional - Migration 004)
+### **Layer 3: Cloud Storage Security Rules**
 
-#### **NOT NULL Constraints**
+**File:** `storage.rules`
 
-Ensures critical foreign keys are never NULL:
+Ensures images are stored safely under restricted paths, preventing attackers from writing arbitrary files or overwriting other users' uploads.
 
-```sql
--- Comments must always reference a post
-ALTER TABLE comments ALTER COLUMN post_id SET NOT NULL;
-
--- Votes must always reference a post
-ALTER TABLE truth_votes ALTER COLUMN post_id SET NOT NULL;
-```
-
-#### **Foreign Key Constraints**
-
-Ensures referential integrity:
-
-```sql
--- Recommended constraints (verify they exist)
-ALTER TABLE comments
-  ADD CONSTRAINT fk_comments_post_id
-  FOREIGN KEY (post_id) REFERENCES posts(id)
-  ON DELETE CASCADE;
-
-ALTER TABLE truth_votes
-  ADD CONSTRAINT fk_truth_votes_post_id
-  FOREIGN KEY (post_id) REFERENCES posts(id)
-  ON DELETE CASCADE;
-```
-
-**Effect:** If a post is deleted, all associated comments and votes are automatically deleted.
-
-#### **CHECK Constraints**
-
-Additional validation at database level:
-
-```sql
--- Prevent negative comment counts
-ALTER TABLE posts
-  ADD CONSTRAINT chk_comment_count_non_negative
-  CHECK (comment_count >= 0);
-
--- Prevent empty comments
-ALTER TABLE comments
-  ADD CONSTRAINT chk_comment_content_not_empty
-  CHECK (LENGTH(TRIM(content)) > 0);
-```
-
----
-
-### **Layer 4: Row-Level Security (Supabase RLS)**
-
-**Location:** Supabase Dashboard → Authentication → Policies
-
-Recommended RLS policies:
-
-```sql
--- Allow anonymous users to read all posts
-CREATE POLICY "Posts are viewable by everyone"
-ON posts FOR SELECT
-USING (true);
-
--- Allow anonymous users to create posts
-CREATE POLICY "Anonymous users can create posts"
-ON posts FOR INSERT
-WITH CHECK (true);
-
--- Prevent editing/deleting posts (enforce immutability)
-CREATE POLICY "Posts cannot be updated"
-ON posts FOR UPDATE
-USING (false);
-
--- Similar policies for comments and votes...
-```
-
----
-
-### **Layer 5: Web Security Headers**
-
-**File:** `firebase.json`
-
-```json
-{
-  "headers": [
-    {
-      "key": "Content-Security-Policy",
-      "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; ..."
-    },
-    {
-      "key": "X-Frame-Options",
-      "value": "SAMEORIGIN"
-    },
-    {
-      "key": "X-Content-Type-Options",
-      "value": "nosniff"
-    },
-    {
-      "key": "X-XSS-Protection",
-      "value": "1; mode=block"
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /post-images/{type}/{userId}/{imageId} {
+      allow read: if type == 'anonymous'
+                  || (
+                    request.auth != null
+                    && (
+                      request.auth.uid == userId
+                      || request.auth.token.email_verified == true
+                      || firestore.exists(/databases/(default)/documents/admin_roles/$(request.auth.uid))
+                    )
+                  );
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && (type == 'anonymous' || type == 'scams')
+                    && request.resource.contentType.matches('image/jpeg')
+                    && request.resource.size < 5 * 1024 * 1024;
+      allow update, delete: if false;
     }
-  ]
+  }
 }
 ```
 
-**Protection:**
-- ✅ Prevents XSS attacks
-- ✅ Prevents clickjacking
-- ✅ Prevents MIME sniffing
-- ✅ Restricts resource loading
+**Enforcements:**
+- **Ownership**: The write is rejected unless the authenticated user's UID matches the `{userId}` path parameter.
+- **Scam Evidence Read Gate**: Scam images are readable only by the uploader, admins, or verified-email users. Anonymous post images remain public.
+- **Type**: Restricts paths to `anonymous` and `scams` folders.
+- **Format**: Only `image/jpeg` files are allowed.
+- **Size**: Uploads are restricted to files under 5 megabytes.
 
 ---
 
-## 🔍 Data Integrity Verification
+### **Layer 4: Cloud Functions Triggers**
 
-### **How to Verify Comment Counts Are Accurate**
+**File:** `functions/index.js`
 
-Run this query in Supabase SQL Editor:
+To prevent client forging of scores, derived counts, and reputation points, all counting and point assignment actions are processed in the backend.
 
-```sql
-SELECT
-  p.id,
-  p.title,
-  p.comment_count as stored_count,
-  COUNT(c.id) as actual_count,
-  CASE
-    WHEN p.comment_count = COUNT(c.id) THEN '✅ Match'
-    ELSE '❌ Mismatch'
-  END as status
-FROM posts p
-LEFT JOIN comments c ON c.post_id = p.id
-GROUP BY p.id, p.title, p.comment_count
-HAVING p.comment_count != COUNT(c.id)
-ORDER BY p.comment_count DESC;
-```
-
-**Expected Result:** Empty result set (no mismatches)
-
-### **How to Verify Triggers Are Installed**
-
-```sql
-SELECT
-  tgname as trigger_name,
-  tgtype,
-  tgenabled as enabled,
-  proname as function_name
-FROM pg_trigger
-JOIN pg_proc ON pg_trigger.tgfoid = pg_proc.oid
-WHERE tgname IN (
-  'trg_comment_count_insert',
-  'trg_comment_count_delete',
-  'trg_prevent_comment_post_update'
-)
-AND tgname NOT LIKE 'RI_%';
-```
-
-**Expected Result:** 3 rows (all enabled)
-
-### **How to Test the Protection Trigger**
-
-```sql
--- This should FAIL with error message:
--- "Changing comment post_id is not allowed. Delete and recreate instead."
-UPDATE comments
-SET post_id = '00000000-0000-0000-0000-000000000000'
-WHERE id = (SELECT id FROM comments LIMIT 1);
-```
+- **Post Creations**: Increments global stats. Non-anonymous posts grant `+5` points to the author profile.
+- **Comment Creations**: Increments post `comment_count` and global stats. Grants `+2` points for the first comment on a post.
+- **Vote Creations/Updates/Deletions**: Pulls the voter's `vote_weight` securely and increments/decrements post vote aggregates (`thumbs_up_count`, etc.) by that weight. Awards `+1` reputation point to active voters.
+- **Report Flagging**: Increments post `report_count`. If a post receives 3 or more reports, the function automatically flags it as `pending_review = true` to hide it from standard feeds.
 
 ---
 
-## 🚨 Security Incident Response
+### **Layer 5: PII Lock & Moderation Flow**
 
-### **If Comment Counts Become Inaccurate**
+**Files:** `lib/features/community/screens/create_scam_report_screen.dart`, `lib/features/community/widgets/scam_report_card.dart`
 
-1. **Immediate Fix:**
-   ```sql
-   UPDATE posts
-   SET comment_count = (
-     SELECT COUNT(*)
-     FROM comments
-     WHERE comments.post_id = posts.id
-   );
-   ```
-
-2. **Verify Triggers:**
-   ```sql
-   -- Check if triggers exist and are enabled
-   SELECT * FROM pg_trigger
-   WHERE tgname LIKE '%comment_count%';
-   ```
-
-3. **Reinstall Triggers:**
-   ```sql
-   \i database_migrations/002_install_comment_count_triggers.sql
-   ```
-
-### **If Unauthorized Data Modification Occurs**
-
-1. **Check Supabase RLS Policies:**
-   - Ensure policies are enabled
-   - Verify no policies allow unauthorized updates
-
-2. **Review Supabase Logs:**
-   - Dashboard → Logs → Database
-   - Look for suspicious UPDATE/DELETE operations
-
-3. **Reset to Known Good State:**
-   - Restore from backup if available
-   - Re-run all migrations in order
+To protect individual privacy and prevent false claims:
+1. **Moderation Status**: All C.U.N.T. scam reports are created with `pending_review: true` and are omitted from public feeds by default. Admins must approve the report (setting `pending_review = false`) before it displays publicly.
+2. **Private Details Lock**: Accused-party contact details and evidence URLs live under `/posts/{postId}/private/details`, not on the public post document. Those details are only readable by admins, the report owner, or verified-email users after the report is approved and not deleted.
+3. **Evidence Requirement**: At least one piece of image/document evidence is strictly required to submit a scam report.
 
 ---
 
-## 📋 Deployment Checklist
+### **Layer 6: Web Security Headers**
 
-When deploying to production, ensure:
+**File:** `firebase.json`
 
-- [ ] Migration 001 verified (vote types correct)
-- [ ] Migration 002 installed (comment count triggers)
-- [ ] Migration 003 installed (prevent post_id updates)
-- [ ] Migration 004 run (optional hardening) - **RECOMMENDED**
-- [ ] All triggers verified with test queries
-- [ ] Comment counts verified accurate
-- [ ] RLS policies enabled on all tables
-- [ ] Security headers active (check with `curl -I`)
-- [ ] Input sanitization tested with HTML/script tags
+HTTP response headers block various browser-based vulnerabilities:
+
+- **Content-Security-Policy (CSP)**: Controls where scripts, images, and styles can load from.
+- **X-Frame-Options**: Set to `SAMEORIGIN` to prevent clickjacking attacks.
+- **X-Content-Type-Options**: Set to `nosniff` to prevent MIME-type sniffing.
+- **Referrer-Policy**: Restricts the amount of referrer details sent on outbound clicks.
 
 ---
 
-## 🔐 Best Practices
-
-### **DO:**
-- ✅ Always sanitize user input at app level
-- ✅ Rely on database triggers for data integrity
-- ✅ Use RLS policies for access control
-- ✅ Test security measures regularly
-- ✅ Monitor logs for suspicious activity
-
-### **DON'T:**
-- ❌ Trust client-side validation alone
-- ❌ Manually update comment_count (let triggers handle it)
-- ❌ Bypass RLS with service role key in client code
-- ❌ Log sensitive user data
-- ❌ Disable triggers without proper migration
-
----
-
-## 📚 Related Documentation
-
-- [SECURITY_FIXES.md](./SECURITY_FIXES.md) - Security vulnerability fixes
-- [COMMENT_COUNT_FIX.md](./COMMENT_COUNT_FIX.md) - Comment count implementation details
-- [README.md](./README.md) - General app documentation
-
----
-
-## ✅ Current Security Posture: **STRONG**
-
-| Security Layer | Status | Coverage |
-|----------------|--------|----------|
-| Input Sanitization | ✅ Active | XSS Prevention |
-| Database Triggers | ✅ Active | Data Integrity |
-| Post_ID Protection | ✅ Active | Anonymity Protection |
-| Security Headers | ✅ Active | Web Attack Prevention |
-| Optional Hardening | ⏳ Pending | Defense-in-Depth |
-
-**Overall Security Score:** 🟢 **Excellent** (4/5 layers active)
-
----
-
-**Last Updated:** 2025-01-16
-**Migration Version:** 003 (with optional 004)
-**Security Audit:** Passed ✅
+*Document Version: 2.0 (Relaunch Override)*
+*Last Updated: April 2026*

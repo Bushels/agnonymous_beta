@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/community/providers/community_providers.dart';
 import '../features/community/screens/community_feed_screen.dart';
 import '../features/community/providers/auth_provider.dart';
+import '../features/community/community_categories.dart';
 
 /// Thin wrapper kept so `runApp` has a single entry widget that can be swapped
 /// without touching main.dart. V1 has no auth flow — this used to listen for
@@ -24,6 +25,6 @@ class MainNavigationShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return const HomeScreen(initialCategory: '');
+    return const HomeScreen(initialCategory: defaultBoardCategory);
   }
 }

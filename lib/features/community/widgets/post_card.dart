@@ -12,7 +12,6 @@ import '../providers/watch_provider.dart';
 import 'board_post_card.dart';
 import 'board_truth_meter.dart';
 import 'comment_section.dart';
-import '../providers/auth_provider.dart';
 import '../../../models/user_profile.dart';
 
 // --- POST CARD ---
@@ -26,12 +25,49 @@ class PostCard extends ConsumerStatefulWidget {
 
 class _PostCardState extends ConsumerState<PostCard> {
   bool _isCommentsExpanded = false;
+  bool _isCurrentUserAuthor = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOwnership();
+  }
+
+  @override
+  void didUpdateWidget(PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id ||
+        oldWidget.post.userId != widget.post.userId) {
+      _checkOwnership();
+    }
+  }
+
+  void _checkOwnership() async {
+    final userId = firebaseAuth.currentUser?.uid;
+    if (userId == null) return;
+
+    if (widget.post.userId == userId) {
+      if (mounted) setState(() => _isCurrentUserAuthor = true);
+      return;
+    }
+
+    // Check posts_private for anonymous posts
+    try {
+      final privateDoc =
+          await firestore.collection('posts_private').doc(widget.post.id).get();
+      if (privateDoc.exists && mounted) {
+        setState(() => _isCurrentUserAuthor = true);
+      } else {
+        if (mounted) setState(() => _isCurrentUserAuthor = false);
+      }
+    } catch (_) {
+      // Permission denied or doesn't exist -> not owner
+      if (mounted) setState(() => _isCurrentUserAuthor = false);
+    }
+  }
 
   /// Check if current user owns this post
-  bool get _isOwner {
-    final userId = firebaseAuth.currentUser?.uid;
-    return userId != null && widget.post.userId == userId;
-  }
+  bool get _isOwner => _isCurrentUserAuthor;
 
   void _toggleComments() {
     final willExpand = !_isCommentsExpanded;
@@ -186,11 +222,6 @@ class _PostCardState extends ConsumerState<PostCard> {
         'deleted_by': userId,
       });
 
-      // Update global stats
-      await firestore.collection('stats').doc('global').update({
-        'total_posts': FieldValue.increment(-1),
-      });
-
       // Refresh posts to remove deleted post
       final currentCategories =
           ref.read(paginatedPostsProvider).categoryStates.keys.toList();
@@ -238,11 +269,6 @@ class _PostCardState extends ConsumerState<PostCard> {
         'deleted_by': null,
       });
 
-      // Update global stats
-      await firestore.collection('stats').doc('global').update({
-        'total_posts': FieldValue.increment(1),
-      });
-
       // Refresh posts to show restored post
       final currentCategories =
           ref.read(paginatedPostsProvider).categoryStates.keys.toList();
@@ -276,8 +302,6 @@ class _PostCardState extends ConsumerState<PostCard> {
 
     try {
       final anonId = await AnonymousIdService.getAnonymousId();
-      final profile = ref.read(authProvider).profile;
-      final weight = profile != null ? profile.voteWeight.round() : 1;
 
       // Check client-side rate limiting
       final rateLimiter = RateLimiter();
@@ -287,80 +311,23 @@ class _PostCardState extends ConsumerState<PostCard> {
       }
 
       // Check self-voting
-      if (widget.post.userId == anonId) {
+      if (_isCurrentUserAuthor) {
         throw 'You cannot vote on your own post';
       }
 
-      final voteRef = firestore.collection('votes').doc('${anonId}_${widget.post.id}');
-      final postRef = firestore.collection('posts').doc(widget.post.id);
-      final statsRef = firestore.collection('stats').doc('global');
+      final voteRef =
+          firestore.collection('votes').doc('${anonId}_${widget.post.id}');
 
-      bool isNewVote = false;
-
-      await firestore.runTransaction((transaction) async {
-        final voteSnapshot = await transaction.get(voteRef);
-        final postSnapshot = await transaction.get(postRef);
-
-        if (!postSnapshot.exists) {
-          throw 'Post not found';
-        }
-
-        final postData = postSnapshot.data() as Map<String, dynamic>;
-        final postAuthorId = postData['user_id'] ?? postData['anonymous_user_id'];
-        if (postAuthorId == anonId) {
-          throw 'You cannot vote on your own post';
-        }
-
-        String? oldVoteType;
-        if (voteSnapshot.exists) {
-          final oldVoteData = voteSnapshot.data() as Map<String, dynamic>;
-          oldVoteType = oldVoteData['vote_type'] as String?;
-        }
-
-        // Set/update the vote
-        transaction.set(voteRef, {
-          'post_id': widget.post.id,
-          'anonymous_user_id': anonId,
-          'vote_type': voteType,
-          'created_at': FieldValue.serverTimestamp(),
-        });
-
-        // Determine updates to post vote counts
-        final postUpdates = <String, dynamic>{};
-        if (oldVoteType != null) {
-          // Decrement old count if different, using the same weight for safety
-          if (oldVoteType != voteType) {
-            postUpdates['${oldVoteType}_count'] = FieldValue.increment(-weight);
-            postUpdates['${voteType}_count'] = FieldValue.increment(weight);
-          }
-        } else {
-          isNewVote = true;
-          // Increment new count and total vote count
-          postUpdates['${voteType}_count'] = FieldValue.increment(weight);
-          postUpdates['vote_count'] = FieldValue.increment(1);
-
-          // Increment global stats total_votes
-          transaction.set(
-            statsRef,
-            {
-              'total_votes': FieldValue.increment(1),
-            },
-            SetOptions(merge: true),
-          );
-        }
-
-        if (postUpdates.isNotEmpty) {
-          transaction.update(postRef, postUpdates);
-        }
+      // Write vote document to Firestore directly
+      await voteRef.set({
+        'post_id': widget.post.id,
+        'anonymous_user_id': anonId,
+        'vote_type': voteType,
+        'created_at': FieldValue.serverTimestamp(),
       });
 
       // Record successful vote for rate limiting
       rateLimiter.recordVote(widget.post.id);
-
-      // Award +1 reputation point for a new vote if registered
-      if (isNewVote && profile != null) {
-        await ref.read(authProvider.notifier).addReputationPoints(1, 'vote');
-      }
 
       // Trigger light haptic on success
       await HapticFeedback.lightImpact();

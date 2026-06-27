@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool isRefreshing = false;
   DateTime? lastRefreshedAt;
   final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounceTimer;
 
   @override
   void initState() {
@@ -48,6 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -95,7 +98,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('You must sign in or register to publish a C.U.N.T. report.'),
+            content: Text(
+                'You must sign in or register to publish a C.U.N.T. report.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -142,12 +146,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       searchQuery = query;
                       isSearching = query.isNotEmpty;
                     });
+                    _searchDebounceTimer?.cancel();
+                    _searchDebounceTimer =
+                        Timer(const Duration(milliseconds: 350), () {
+                      ref.read(searchQueryProvider.notifier).set(query);
+                    });
                   },
                 ),
               ),
               if (AnonymousIdService.authInitError != null)
                 SliverToBoxAdapter(
-                  child: _AuthErrorBanner(error: AnonymousIdService.authInitError!),
+                  child: _AuthErrorBanner(
+                      error: AnonymousIdService.authInitError!),
                 ),
               SliverPersistentHeader(
                 pinned: false,
@@ -160,11 +170,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onCategoryChanged: (category) {
                     setState(() {
                       selectedCategory = category;
-                      if (category.isNotEmpty) {
-                        searchQuery = '';
-                        isSearching = false;
-                      }
+                      searchQuery = '';
+                      isSearching = false;
                     });
+                    _searchDebounceTimer?.cancel();
+                    ref.read(searchQueryProvider.notifier).set('');
                   },
                 ),
               ),
@@ -224,10 +234,13 @@ class _RoomHeroState extends State<_RoomHero> {
 
   @override
   Widget build(BuildContext context) {
-    final isScamCategory = widget.selectedCategory == 'C.U.N.T.' || widget.selectedCategory == 'Scams';
+    final isScamCategory = widget.selectedCategory == 'C.U.N.T.' ||
+        widget.selectedCategory == 'Scams';
     final room = widget.selectedCategory.isEmpty
         ? 'All Rooms'
-        : (isScamCategory ? 'C.U.N.T. Registry' : '${widget.selectedCategory} Room');
+        : (isScamCategory
+            ? 'C.U.N.T. Registry'
+            : '${widget.selectedCategory} Room');
 
     return SafeArea(
       bottom: false,
@@ -309,7 +322,6 @@ class _RoomHeroState extends State<_RoomHero> {
                             ],
                           ),
                         ),
-
                         IconButton.filledTonal(
                           onPressed: () => setState(() => searchOpen = true),
                           style: IconButton.styleFrom(
@@ -463,7 +475,8 @@ class _IdentityMenuButton extends ConsumerWidget {
         children: [
           Text(profile.levelInfo.emoji, style: const TextStyle(fontSize: 14)),
           const SizedBox(width: 5),
-          const FaIcon(FontAwesomeIcons.circleCheck, size: 10, color: BoardColors.sky),
+          const FaIcon(FontAwesomeIcons.circleCheck,
+              size: 10, color: BoardColors.sky),
         ],
       );
       buttonColor = BoardColors.sky;
@@ -598,7 +611,8 @@ class _IdentityMenuButton extends ConsumerWidget {
     );
   }
 
-  void _showProfileDialog(BuildContext context, WidgetRef ref, UserProfile profile) {
+  void _showProfileDialog(
+      BuildContext context, WidgetRef ref, UserProfile profile) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -638,7 +652,8 @@ class _IdentityMenuButton extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -683,14 +698,43 @@ class _IdentityMenuButton extends ConsumerWidget {
   }
 }
 
-
-
-class _ProfileDialog extends StatelessWidget {
+class _ProfileDialog extends ConsumerStatefulWidget {
   final UserProfile profile;
   const _ProfileDialog({required this.profile});
 
   @override
+  ConsumerState<_ProfileDialog> createState() => _ProfileDialogState();
+}
+
+class _ProfileDialogState extends ConsumerState<_ProfileDialog> {
+  Timer? _verificationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Periodically check/sync email verification when dialog is open
+    final currentUser = firebaseAuth.currentUser;
+    if (currentUser != null &&
+        !currentUser.isAnonymous &&
+        !widget.profile.emailVerified) {
+      _verificationTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+        ref.read(authProvider.notifier).syncEmailVerification();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _verificationTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Watch authState to get real-time profile updates when verification state syncs
+    final authState = ref.watch(authProvider);
+    final profile = authState.profile ?? widget.profile;
+
     return Dialog(
       backgroundColor: const Color(0xFF1F2937),
       shape: RoundedRectangleBorder(
@@ -711,7 +755,7 @@ class _ProfileDialog extends StatelessWidget {
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
-            
+
             // Avatar Level Circle
             Container(
               height: 76,
@@ -719,7 +763,8 @@ class _ProfileDialog extends StatelessWidget {
               decoration: BoxDecoration(
                 color: BoardColors.sky.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
-                border: Border.all(color: BoardColors.sky.withValues(alpha: 0.3), width: 3),
+                border: Border.all(
+                    color: BoardColors.sky.withValues(alpha: 0.3), width: 3),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -742,10 +787,14 @@ class _ProfileDialog extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const FaIcon(
-                  FontAwesomeIcons.circleCheck,
+                FaIcon(
+                  profile.emailVerified
+                      ? FontAwesomeIcons.circleCheck
+                      : FontAwesomeIcons.userCheck,
                   size: 16,
-                  color: BoardColors.sky,
+                  color: profile.emailVerified
+                      ? BoardColors.sky
+                      : BoardColors.muted,
                 ),
               ],
             ),
@@ -768,6 +817,92 @@ class _ProfileDialog extends StatelessWidget {
                 ),
               ),
             ),
+
+            if (profile.email != null && !profile.emailVerified) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            color: Color(0xFFEF4444), size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Unverified ⚠️',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFFEF4444),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Verify your email (${profile.email}) to unlock all features.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                          color: Colors.white70, fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFEF4444).withValues(alpha: 0.2),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                              color: const Color(0xFFEF4444)
+                                  .withValues(alpha: 0.4)),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                      ),
+                      onPressed: () async {
+                        try {
+                          await firebaseAuth.currentUser
+                              ?.sendEmailVerification();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Verification email resent.'),
+                                backgroundColor: Color(0xFF84CC16),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text('Failed to resend verification: $e'),
+                                backgroundColor: const Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: Text(
+                        'Resend Verification Email',
+                        style: GoogleFonts.inter(
+                            fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Reputation & Progress
@@ -779,7 +914,8 @@ class _ProfileDialog extends StatelessWidget {
                   children: [
                     Text(
                       'Reputation Points',
-                      style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
+                      style: GoogleFonts.inter(
+                          color: Colors.white70, fontSize: 13),
                     ),
                     Text(
                       '${profile.reputationPoints} Points',
@@ -798,7 +934,8 @@ class _ProfileDialog extends StatelessWidget {
                     minHeight: 10,
                     value: profile.progressToNextLevel,
                     backgroundColor: const Color(0xFF374151),
-                    valueColor: const AlwaysStoppedAnimation<Color>(BoardColors.sky),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(BoardColors.sky),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -838,7 +975,8 @@ class _ProfileDialog extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFF1E2633).withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: BoardColors.sky.withValues(alpha: 0.15)),
+                border:
+                    Border.all(color: BoardColors.sky.withValues(alpha: 0.15)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -858,7 +996,8 @@ class _ProfileDialog extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text(
                         'Active Vote Weight: ${profile.voteWeight.toStringAsFixed(1)}x',
-                        style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                        style: GoogleFonts.inter(
+                            color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -866,12 +1005,14 @@ class _ProfileDialog extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 6.0),
                         child: Row(
                           children: [
-                            const Icon(Icons.bolt, color: BoardColors.sky, size: 14),
+                            const Icon(Icons.bolt,
+                                color: BoardColors.sky, size: 14),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 perk,
-                                style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                                style: GoogleFonts.inter(
+                                    color: Colors.white70, fontSize: 12),
                               ),
                             ),
                           ],
@@ -954,13 +1095,16 @@ class _CuntSortSelector extends ConsumerWidget {
           _SortChip(
             label: 'Latest',
             selected: activeSort == CuntSortMode.latest,
-            onTap: () => ref.read(cuntSortProvider.notifier).set(CuntSortMode.latest),
+            onTap: () =>
+                ref.read(cuntSortProvider.notifier).set(CuntSortMode.latest),
           ),
           const SizedBox(width: 8),
           _SortChip(
             label: 'Highest Loss',
             selected: activeSort == CuntSortMode.highestLoss,
-            onTap: () => ref.read(cuntSortProvider.notifier).set(CuntSortMode.highestLoss),
+            onTap: () => ref
+                .read(cuntSortProvider.notifier)
+                .set(CuntSortMode.highestLoss),
           ),
         ],
       ),
@@ -988,7 +1132,9 @@ class _SortChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? activeColor.withValues(alpha: 0.16) : Colors.transparent,
+          color: selected
+              ? activeColor.withValues(alpha: 0.16)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: selected ? activeColor : BoardColors.line,

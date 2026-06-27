@@ -206,8 +206,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         'province_state': _selectedProvinceState,
         'anonymous_user_id': anonymousId,
         'is_anonymous': !postAsRegistered,
-        'author_username': postAsRegistered ? auth.profile?.username : authorUsername,
-        'author_verified': postAsRegistered,
+        'author_username':
+            postAsRegistered ? auth.profile?.username : authorUsername,
+        'author_verified':
+            postAsRegistered && (auth.user?.emailVerified ?? false),
         'image_url': imageUrls.isNotEmpty ? imageUrls.first : null,
         'image_urls': imageUrls,
         if (monetteArea != null) 'monette_area': monetteArea,
@@ -267,34 +269,58 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     payload['created_at'] = FieldValue.serverTimestamp();
     payload['updated_at'] = FieldValue.serverTimestamp();
     payload['is_deleted'] = false;
+    payload['pending_review'] = false; // Standard posts bypass moderation
     payload['comment_count'] = 0;
     payload['vote_count'] = 0;
     payload['thumbs_up_count'] = 0;
     payload['thumbs_down_count'] = 0;
     payload['partial_count'] = 0;
     payload['funny_count'] = 0;
-    payload['user_id'] = payload['anonymous_user_id']; // For RLS-style ownership
+    payload['user_id'] = payload['anonymous_user_id'];
+
+    // Generate search keywords for server-side search
+    final searchKeywords = buildSearchKeywords(
+      title: payload['title'] as String? ?? '',
+      content: payload['content'] as String? ?? '',
+      additionalFields: [
+        payload['monette_area'] as String?,
+        payload['category'] as String?,
+      ],
+    );
+    payload['search_keywords'] = searchKeywords;
 
     final docRef = firestore.collection('posts').doc();
-    
+    final postId = docRef.id;
+    payload['id'] = postId;
+
+    final isAnonymous = payload['is_anonymous'] as bool? ?? true;
+    final publicPayload = Map<String, dynamic>.from(payload);
+
+    // If anonymous, remove the real user UID from the public document
+    if (isAnonymous) {
+      publicPayload.remove('user_id');
+      publicPayload.remove('anonymous_user_id');
+    }
+
     await firestore.runTransaction((transaction) async {
-      transaction.set(docRef, payload);
-      
-      final statsRef = firestore.collection('stats').doc('global');
-      transaction.set(
-        statsRef,
-        {
-          'total_posts': FieldValue.increment(1),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(docRef, publicPayload);
+
+      // Write private ownership mapping
+      final privateRef = firestore.collection('posts_private').doc(postId);
+      transaction.set(privateRef, {
+        'user_id': payload['anonymous_user_id'] ?? payload['user_id'],
+        'created_at': FieldValue.serverTimestamp(),
+      });
     });
 
     final snapshot = await docRef.get();
-    final data = snapshot.data() as Map<String, dynamic>;
+    final data = snapshot.data() ?? {};
     data['id'] = docRef.id;
     if (data['created_at'] is Timestamp) {
-      data['created_at'] = (data['created_at'] as Timestamp).toDate().toIso8601String();
+      data['created_at'] =
+          (data['created_at'] as Timestamp).toDate().toIso8601String();
+    } else {
+      data['created_at'] = DateTime.now().toIso8601String();
     }
     return data;
   }
@@ -567,7 +593,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 ),
                 alignment: Alignment.center,
                 child: FaIcon(
-                  isRegistered ? FontAwesomeIcons.user : FontAwesomeIcons.userSecret,
+                  isRegistered
+                      ? FontAwesomeIcons.user
+                      : FontAwesomeIcons.userSecret,
                   size: 18,
                   color: isRegistered ? BoardColors.sky : BoardColors.green,
                 ),

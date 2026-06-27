@@ -66,3 +66,6 @@ analysis.txt
 analyze_results.txt
 build_log.txt
 lib_analysis.txt
+
+# Node / Functions
+**/node_modules/

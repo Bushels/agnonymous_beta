@@ -245,12 +245,20 @@ class _PostMetaRow extends StatelessWidget {
                     : (authorUsername ?? 'Unknown'),
                 style: BoardText.meta,
               ),
-              if (authorVerified == true)
-                const FaIcon(
-                  FontAwesomeIcons.circleCheck,
-                  size: 11,
-                  color: BoardColors.sky,
-                ),
+              if (!isAnonymous) ...[
+                if (authorVerified == true)
+                  const FaIcon(
+                    FontAwesomeIcons.circleCheck,
+                    size: 11,
+                    color: BoardColors.sky,
+                  )
+                else
+                  const FaIcon(
+                    FontAwesomeIcons.userCheck,
+                    size: 11,
+                    color: BoardColors.muted,
+                  ),
+              ],
               _Dot(color: BoardColors.line),
               Text(
                 DateFormat.MMMd().add_jm().format(createdAt),
@@ -358,7 +366,8 @@ class _PostImageTile extends StatelessWidget {
                     top: MediaQuery.of(context).padding.top + 16,
                     right: 16,
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 30),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),

@@ -27,6 +27,19 @@ That script:
 
 ---
 
+## Backend deploy (Firebase rules, indexes, storage, functions)
+
+To deploy the security rules, database indexes, storage constraints, and Cloud Functions:
+
+```powershell
+# From repo root
+firebase deploy --only firestore:rules,firestore:indexes,storage,functions
+```
+
+Ensure Node 20 is installed, as required by the backend Cloud Functions.
+
+---
+
 ## Infrastructure overview
 
 | Piece | Hosted on | Where to look |

@@ -21,10 +21,12 @@ class CreateScamReportScreen extends ConsumerStatefulWidget {
   const CreateScamReportScreen({super.key});
 
   @override
-  ConsumerState<CreateScamReportScreen> createState() => _CreateScamReportScreenState();
+  ConsumerState<CreateScamReportScreen> createState() =>
+      _CreateScamReportScreenState();
 }
 
-class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen> {
+class _CreateScamReportScreenState
+    extends ConsumerState<CreateScamReportScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
@@ -35,7 +37,7 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
   final _locationController = TextEditingController();
   final _lossItemController = TextEditingController();
   final _lossAmountController = TextEditingController();
-  
+
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _selectedImages = [];
   final List<Uint8List> _selectedImageBytes = [];
@@ -58,7 +60,8 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
   Future<void> _pickImage() async {
     if (_selectedImages.length >= 3) return;
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      final file = await _picker.pickImage(
+          source: ImageSource.gallery, imageQuality: 85);
       if (file != null) {
         final bytes = await file.readAsBytes();
         setState(() {
@@ -88,15 +91,19 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
       final bytes = _selectedImageBytes[i];
       final decoded = img.decodeImage(bytes);
       if (decoded == null) continue;
-      
+
       final oriented = img.bakeOrientation(decoded);
-      final resized = img.copyResize(oriented, width: oriented.width > 1200 ? 1200 : null);
-      final finalBytes = Uint8List.fromList(img.encodeJpg(resized, quality: 80));
-      
-      final path = 'scams/$uid/${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.jpg';
+      final resized =
+          img.copyResize(oriented, width: oriented.width > 1200 ? 1200 : null);
+      final finalBytes =
+          Uint8List.fromList(img.encodeJpg(resized, quality: 80));
+
+      final path =
+          'scams/$uid/${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.jpg';
       // Match storage rules path by using child('post-images/...')
       final ref = firebaseStorage.ref().child('post-images/$path');
-      await ref.putData(finalBytes, SettableMetadata(contentType: 'image/jpeg'));
+      await ref.putData(
+          finalBytes, SettableMetadata(contentType: 'image/jpeg'));
       final url = await ref.getDownloadURL();
       urls.add(url);
     }
@@ -105,11 +112,22 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
 
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final auth = ref.read(authProvider);
     if (auth.user == null || auth.user!.isAnonymous) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must sign in or register to publish a C.U.N.T. report.')),
+        const SnackBar(
+            content: Text(
+                'You must sign in or register to publish a C.U.N.T. report.')),
+      );
+      return;
+    }
+
+    if (_selectedImages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'You must upload at least one piece of evidence (invoice, contract, screenshot) to publish a C.U.N.T. report.')),
       );
       return;
     }
@@ -117,7 +135,19 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
     setState(() => _isLoading = true);
 
     try {
-      final uid = auth.user!.uid;
+      // Reload user to fetch the latest email verification status
+      await firebaseAuth.currentUser?.reload();
+      final latestUser = firebaseAuth.currentUser;
+
+      if (latestUser == null || latestUser.isAnonymous) {
+        throw 'Authentication session expired. Please sign in again.';
+      }
+
+      if (!latestUser.emailVerified) {
+        throw 'You must verify your email address before publishing a C.U.N.T. report. Check your inbox for the verification email.';
+      }
+
+      final uid = latestUser.uid;
       final imageLinks = await _uploadImages(uid);
 
       final title = sanitizeInput(_titleController.text);
@@ -133,11 +163,10 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
       final keywords = buildSearchKeywords(
         title: title,
         content: desc,
-        name: name,
-        email: email,
-        phone: phone,
-        company: company,
-        lossItem: lossItem,
+        additionalFields: [
+          lossItem,
+          location,
+        ],
       );
 
       final docRef = firestore.collection('posts').doc();
@@ -157,12 +186,19 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         'user_id': uid,
         'is_anonymous': false,
         'author_username': auth.profile?.username ?? 'Verified Farmer',
-        'author_verified': true,
+        'author_verified': latestUser.emailVerified,
         'is_deleted': false,
-        'image_urls': imageLinks,
-        'image_url': imageLinks.isNotEmpty ? imageLinks.first : null,
-        
+        'pending_review': true, // Scam reports must be reviewed by moderators
+        'has_images': imageLinks.isNotEmpty,
+
         // Scam Fields
+        'scam_location': location,
+        'loss_item': lossItem,
+        'loss_amount': lossAmount,
+        'search_keywords': keywords,
+      };
+
+      final Map<String, dynamic> privateDetails = {
         'scammer_name': name,
         'scammer_company': company,
         'scammer_phone': phone,
@@ -170,20 +206,33 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         'scam_location': location,
         'loss_item': lossItem,
         'loss_amount': lossAmount,
-        'search_keywords': keywords,
+        'image_urls': imageLinks,
+        'image_url': imageLinks.isNotEmpty ? imageLinks.first : null,
       };
 
       await firestore.runTransaction((transaction) async {
         transaction.set(docRef, data);
-        final statsRef = firestore.collection('stats').doc('global');
-        transaction.set(statsRef, {'total_posts': FieldValue.increment(1)}, SetOptions(merge: true));
+
+        final detailsRef = firestore
+            .collection('posts')
+            .doc(docRef.id)
+            .collection('private')
+            .doc('details');
+        transaction.set(detailsRef, privateDetails);
+
+        final privateRef = firestore.collection('posts_private').doc(docRef.id);
+        transaction.set(privateRef, {
+          'user_id': uid,
+          'created_at': FieldValue.serverTimestamp(),
+        });
       });
 
       // Track watch list
       await ref.read(watchedThreadsProvider.notifier).watch(Post.fromMap({
-        ...data,
-        'created_at': DateTime.now().toIso8601String(),
-      }));
+            ...data,
+            ...privateDetails,
+            'created_at': DateTime.now().toIso8601String(),
+          }));
 
       // Add reputation points
       await ref.read(authProvider.notifier).addReputationPoints(5, 'post');
@@ -198,7 +247,9 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('C.U.N.T. report published successfully. (+5 Rep)')),
+          const SnackBar(
+              content: Text(
+                  'C.U.N.T. report submitted for review. Reputation points will be awarded upon approval.')),
         );
       }
     } catch (e) {
@@ -214,51 +265,14 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
     }
   }
 
-  List<String> buildSearchKeywords({
-    required String title,
-    required String content,
-    required String name,
-    String? email,
-    String? phone,
-    String? company,
-    required String lossItem,
-  }) {
-    final Set<String> keywords = {};
-    void addTokens(String? text) {
-      if (text == null || text.trim().isEmpty) return;
-      final cleaned = text.toLowerCase().replaceAll(RegExp(r'[.,\/#!$%\^&\*;:{}=\-_`~()??"'']'), ' ');
-      for (final token in cleaned.split(RegExp(r'\s+'))) {
-        final trimmed = token.trim();
-        if (trimmed.length >= 2) {
-          keywords.add(trimmed);
-        }
-      }
-    }
-
-    addTokens(title);
-    addTokens(content);
-    addTokens(name);
-    addTokens(lossItem);
-    if (company != null) addTokens(company);
-    if (email != null && email.trim().isNotEmpty) {
-      keywords.add(email.trim().toLowerCase());
-    }
-    if (phone != null && phone.trim().isNotEmpty) {
-      keywords.add(phone.trim().toLowerCase());
-      final digits = phone.replaceAll(RegExp(r'\D'), '');
-      if (digits.length >= 7) {
-        keywords.add(digits);
-      }
-    }
-    return keywords.toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: BoardColors.prairie,
       appBar: AppBar(
-        title: Text('File C.U.N.T. Report', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: BoardColors.ink)),
+        title: Text('File C.U.N.T. Report',
+            style: GoogleFonts.outfit(
+                fontWeight: FontWeight.bold, color: BoardColors.ink)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -267,7 +281,8 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: BoardColors.green))
+          ? const Center(
+              child: CircularProgressIndicator(color: BoardColors.green))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
@@ -277,30 +292,42 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                   children: [
                     _buildSectionHeader('Report Title & Details'),
                     const SizedBox(height: 10),
-                    _buildTextField(_titleController, 'Title', 'e.g. Non-payment for barley bales', isRequired: true),
+                    _buildTextField(_titleController, 'Title',
+                        'e.g. Non-payment for barley bales',
+                        isRequired: true),
                     const SizedBox(height: 10),
-                    _buildTextField(_descController, 'Detailed Description', 'Describe how the transaction issue occurred...', maxLines: 5, isRequired: true),
-                    
+                    _buildTextField(_descController, 'Detailed Description',
+                        'Describe how the transaction issue occurred...',
+                        maxLines: 5, isRequired: true),
                     const SizedBox(height: 20),
                     _buildSectionHeader('Accused Contact Details'),
                     const SizedBox(height: 10),
-                    _buildTextField(_nameController, 'Debtor Name', 'Full Name of the individual', isRequired: true),
+                    _buildTextField(_nameController, 'Debtor Name',
+                        'Full Name of the individual',
+                        isRequired: true),
                     const SizedBox(height: 10),
-                    _buildTextField(_companyController, 'Company / Entity', 'Business name if applicable'),
+                    _buildTextField(_companyController, 'Company / Entity',
+                        'Business name if applicable'),
                     const SizedBox(height: 10),
-                    _buildTextField(_phoneController, 'Debtor Phone', 'Phone number if known'),
+                    _buildTextField(_phoneController, 'Debtor Phone',
+                        'Phone number if known'),
                     const SizedBox(height: 10),
-                    _buildTextField(_emailController, 'Debtor Email', 'Email address if known'),
+                    _buildTextField(_emailController, 'Debtor Email',
+                        'Email address if known'),
                     const SizedBox(height: 10),
-                    _buildTextField(_locationController, 'Transaction Location', 'City, Province/State where transaction took place', isRequired: true),
-                    
+                    _buildTextField(_locationController, 'Transaction Location',
+                        'City, Province/State where transaction took place',
+                        isRequired: true),
                     const SizedBox(height: 20),
                     _buildSectionHeader('Loss Valuation'),
                     const SizedBox(height: 10),
-                    _buildTextField(_lossItemController, 'Loss Item', 'What was unpaid? (e.g. Canola seed)', isRequired: true),
+                    _buildTextField(_lossItemController, 'Loss Item',
+                        'What was unpaid? (e.g. Canola seed)',
+                        isRequired: true),
                     const SizedBox(height: 10),
-                    _buildTextField(_lossAmountController, 'Loss Amount (\$ CAD)', 'Estimated monetary loss', keyboardType: TextInputType.number, isRequired: true),
-                    
+                    _buildTextField(_lossAmountController,
+                        'Loss Amount (\$ CAD)', 'Estimated monetary loss',
+                        keyboardType: TextInputType.number, isRequired: true),
                     const SizedBox(height: 20),
                     _buildSectionHeader('Upload Proof / Evidence'),
                     const SizedBox(height: 10),
@@ -310,8 +337,11 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                         side: const BorderSide(color: BoardColors.line),
                       ),
                       onPressed: _pickImage,
-                      icon: const Icon(Icons.photo_library, color: BoardColors.green),
-                      label: Text('Attach Proof Image (${_selectedImages.length}/3)', style: const TextStyle(color: Colors.white)),
+                      icon: const Icon(Icons.photo_library,
+                          color: BoardColors.green),
+                      label: Text(
+                          'Attach Proof Image (${_selectedImages.length}/3)',
+                          style: const TextStyle(color: Colors.white)),
                     ),
                     if (_selectedImages.isNotEmpty) ...[
                       const SizedBox(height: 10),
@@ -349,7 +379,8 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                                     onTap: () => _removeImage(index),
                                     child: Container(
                                       color: Colors.black54,
-                                      child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                      child: const Icon(Icons.close,
+                                          color: Colors.white, size: 16),
                                     ),
                                   ),
                                 ),
@@ -366,12 +397,16 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFEF4444),
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _submitReport,
                         child: Text(
                           'Publish C.U.N.T. Report',
-                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                          style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.white),
                         ),
                       ),
                     ),
@@ -385,7 +420,8 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
-      style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: BoardColors.amber),
+      style: GoogleFonts.outfit(
+          fontSize: 18, fontWeight: FontWeight.bold, color: BoardColors.amber),
     );
   }
 
@@ -407,8 +443,12 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         hintText: hint,
         labelStyle: const TextStyle(color: BoardColors.muted),
         hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-        enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: BoardColors.line), borderRadius: BorderRadius.circular(10)),
-        focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: BoardColors.green), borderRadius: BorderRadius.circular(10)),
+        enabledBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: BoardColors.line),
+            borderRadius: BorderRadius.circular(10)),
+        focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: BoardColors.green),
+            borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: BoardColors.paper,
       ),
@@ -416,7 +456,9 @@ class _CreateScamReportScreenState extends ConsumerState<CreateScamReportScreen>
         if (isRequired && (value == null || value.trim().isEmpty)) {
           return '$label is required';
         }
-        if (isRequired && keyboardType == TextInputType.number && double.tryParse(value!) == null) {
+        if (isRequired &&
+            keyboardType == TextInputType.number &&
+            double.tryParse(value!) == null) {
           return 'Please enter a valid amount';
         }
         return null;
