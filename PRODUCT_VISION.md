@@ -85,8 +85,8 @@ Frontend:
 - Flutter 3.41.7
 - Dart 3.11.5
 - Riverpod Notifier pattern
-- Supabase backend
-- Firebase Hosting web preview
+- Firebase backend (Cloud Firestore + Firebase Auth anonymous sessions, project `agnonymous-beta-kyle-2005b`)
+- Vercel production hosting (`agnonymous.buperac.com`)
 
 Primary board files:
 
@@ -116,7 +116,7 @@ Brand/loading assets:
 - `web/manifest.json`
 - `web/icons/*`
 
-Supabase migrations added for relaunch:
+Legacy Supabase migrations from the April relaunch (superseded by the June 2026 Firebase migration; kept for history):
 
 - `20260423150000_anonymous_board_v1.sql`
 - `20260423162000_anonymous_post_watches.sql`
@@ -130,22 +130,21 @@ Supabase migrations added for relaunch:
 
 ## Current Database Intent
 
-Posts:
+Posts (Firestore `posts` collection):
 
 - Anonymous insert allowed.
-- `user_id` is null for board posts.
-- `anonymous_user_id` is required.
+- Anonymous public post docs carry no author UID; ownership lives in the private `posts_private` mapping.
 - `is_anonymous` is true.
 - `author_username` is public anonymous display text only.
 - `image_urls` stores optional public post images; uploads are client re-encoded before storage.
 - `monette_area` stores an optional public Monette farming-area label for Monette posts only.
 
-Comments:
+Comments (Firestore `comments` collection):
 
 - Anonymous insert allowed.
-- `anonymous_user_id` is required.
+- Anonymous public comment docs carry no author UID; ownership lives in the private `comments_private` mapping.
 - `author_username` is public anonymous display text only.
-- Comment count backfills onto posts.
+- Comment count aggregates onto posts via Cloud Functions.
 
 Votes:
 
@@ -157,7 +156,7 @@ Votes:
 Watched threads:
 
 - Stored locally immediately.
-- Mirrored to `anonymous_post_watches` when the migration/RPCs are available.
+- Mirrored to the Firestore `watches` collection keyed by the Firebase anonymous auth UID.
 - Used for new-comment counts.
 
 ## Notification Direction
@@ -169,7 +168,7 @@ Push notifications are a later opt-in step and do not require sign-in, but they 
 - Notification permission prompt.
 - FCM token capture.
 - Anonymous device token table.
-- Supabase Edge Function or backend sender.
+- Cloud Function or backend sender.
 - Generic privacy-safe payload such as "New comment on your watched thread."
 
 Do not bend the existing auth-user notification table into anonymous notifications.

@@ -2,28 +2,41 @@
 
 ## April 2026 Relaunch Override
 
-This section is the current source of truth and overrides older dashboard, market-intelligence, input-pricing, and gamification plans in this repo. Everything below this block is legacy context.
+This section is the current source of truth and overrides older dashboard, market-intelligence, input-pricing, and gamification plans in this repo. Everything below this block is legacy context — including every Supabase pattern, table list, `SUPABASE_*` environment variable, RLS/RPC reference, and data-pipeline description.
 
-Agnonymous is being relaunched as a **mobile-first anonymous posting board**:
+Agnonymous is a **mobile-first anonymous posting board**:
 
-- No sign up or sign in.
-- Anonymous reading, posting, commenting, and voting.
-- Monette is the first-class launch room.
+- No sign up or sign in for standard usage. Anonymous reading, posting, commenting, and voting are fully supported.
+- Optional accounts exist for perks and the C.U.N.T. (Chronic Unpaid Network Therapy) registry: submitting reports under the `C.U.N.T.` category requires a verified sign-in; everyone can view, search, comment, and vote on them.
+- Monette is the first-class launch room. Monette posts can optionally reference a public farming area.
 - The bottom post control is icon-only.
-- Watch state is tied to the anonymous device ID, not an account.
+- Watch state is tied to the Firebase anonymous auth UID (`watches/{uid}_{postId}`), not a user account.
 - The truth meter uses three board signals: thumbs up, neutral, thumbs down.
 - Funny reactions are removed from the UI.
 - Market intelligence, fertilizer/input pricing, marketplace pricing, My Farm, My Bins, elevator maps, and commodity dashboards are out of v1.
+
+### June 2026 Backend Migration — Firebase, not Supabase
+
+Since 2026-06-25 the entire backend is **Firebase** project `agnonymous-beta-kyle-2005b`:
+
+- **Cloud Firestore** holds `posts`, `comments`, `votes`, `watches`, `reports`, `stats`, `user_profiles`, `usernames`, plus private ownership mappings `posts_private` / `comments_private` (anonymous public docs carry no author UID).
+- **Firebase Auth**: every visitor gets an anonymous session via `signInAnonymously()` in `lib/main.dart`; email accounts are optional and required only for C.U.N.T. reports.
+- **Security & backend deploys**: `firestore.rules` + `firestore.indexes.json` + Cloud Functions in `functions/`. Deploy with `firebase deploy --only firestore:rules,firestore:indexes,functions`.
+- **Web production is still Vercel** (`agnonymous.buperac.com`, deploys from git). Do not use `firebase deploy --only hosting` for production web.
+- The old Supabase project (`ibgsloyjxdopkvwqcqwh`) was migrated into Firestore on 2026-06-24 (155 posts) and is retained only as a pre-migration backup. Do not re-add `supabase_flutter`, RLS policies, RPCs, or the `x-anonymous-id` header pattern.
+- **Firestore gotcha that already bit us once**: equality filters and rules checks silently exclude documents missing the filtered field. Any new required-field filter on `posts`/`comments` queries or read rules must ship with a backfill for pre-existing documents. See the 2026-07-02 incident log.
 
 **Read first for current work:**
 
 | Document | Purpose |
 |----------|---------|
 | [PRODUCT_VISION.md](PRODUCT_VISION.md) | Current anonymous-board product vision |
-| [docs/plans/2026-04-23-anonymous-board-relaunch.md](docs/plans/2026-04-23-anonymous-board-relaunch.md) | Relaunch status, decisions, audit checklist |
+| [docs/plans/2026-04-23-anonymous-board-relaunch.md](docs/plans/2026-04-23-anonymous-board-relaunch.md) | Relaunch status, ship logs, 2026-07-02 incident log |
+| [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | Current Firebase stack, Firestore collections, rules design |
+| [DATABASE_SECURITY.md](DATABASE_SECURITY.md) | Firestore rules and moderation security model |
 | [AGENTS.md](AGENTS.md) | Mirror of this file for Codex sessions (keep synchronized) |
 
-**Before reverting anything, read `docs/plans/2026-04-23-anonymous-board-relaunch.md` → "2026-04-24 Ship Log" and "2026-04-28 Ship Log".** The 2026-04-24 entry lists the files deleted in the relaunch (including everything under `lib/screens/**`), the header-enforcement security migration, the analyzer excludes, and the two Vercel deploy fixes (`build.sh` exec bit, removing `.env` from pubspec assets). The 2026-04-28 entry covers the donation card / `SupportCard`, the two-Vercel-projects gotcha (the nested `agnonymous_beta/agnonymous_beta/` directory is **legacy** and ships to a different Vercel project — never edit code there expecting it to land on `agnonymous.buperac.com`), and the no-em-dashes-in-user-copy rule. Undoing any of these will either break production, re-introduce v2-scope code the product deliberately cut, or re-introduce AI-authorship tells in user-facing copy.
+**Before reverting anything, read `docs/plans/2026-04-23-anonymous-board-relaunch.md` → "2026-04-24 Ship Log", "2026-04-28 Ship Log", and "2026-07-02 Incident Log".** The 2026-04-24 entry lists the files deleted in the relaunch (including everything under `lib/screens/**`), the header-enforcement security migration, the analyzer excludes, and the two Vercel deploy fixes (`build.sh` exec bit, removing `.env` from pubspec assets). The 2026-04-28 entry covers the donation card / `SupportCard`, the two-Vercel-projects gotcha (the nested `agnonymous_beta/agnonymous_beta/` directory is **legacy** and ships to a different Vercel project — never edit code there expecting it to land on `agnonymous.buperac.com`), and the no-em-dashes-in-user-copy rule. Undoing any of these will either break production, re-introduce v2-scope code the product deliberately cut, or re-introduce AI-authorship tells in user-facing copy.
 
 Legacy documents below remain useful only for historical context. **Do not use them to justify adding pricing, dashboards, sign-in, or market intelligence back into v1.**
 
@@ -33,7 +46,6 @@ Legacy documents below remain useful only for historical context. **Do not use t
 
 | Document | Purpose |
 |----------|---------|
-| [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | Tech stack, database schema, API design |
 | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | Phase-by-phase implementation plan (pre-relaunch) |
 | [INPUT_PRICING_SYSTEM.md](INPUT_PRICING_SYSTEM.md) | Fertilizer/chemical/seed pricing feature (out of v1) |
 | [GAMIFICATION_SYSTEM.md](GAMIFICATION_SYSTEM.md) | Point system and reputation design (out of v1) |
@@ -76,9 +88,9 @@ Agnonymous is a **farmer-first intelligence dashboard** — a "Bloomberg Termina
 | Frontend | Flutter | 3.41.7 |
 | Language | Dart | 3.11.5 |
 | State Management | flutter_riverpod | 3.0.3 |
-| Backend | Supabase | Cloud |
-| Database | PostgreSQL | 15+ |
-| Hosting | Firebase Hosting | - |
+| Backend | Firebase (Auth, Cloud Functions, Storage) | - |
+| Database | Cloud Firestore | - |
+| Hosting | Vercel (production web: agnonymous.buperac.com) | - |
 
 ---
 
@@ -103,21 +115,19 @@ class MyNotifier extends Notifier<MyState> {
 final myProvider = NotifierProvider<MyNotifier, MyState>(MyNotifier.new);
 ```
 
-### Real-time Subscriptions Pattern
+### Real-time Subscriptions Pattern (Firestore)
 
 ```dart
 // Inside build() method
-final channel = supabase
-    .channel('my_channel')
-    .onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'my_table',
-      callback: (payload) => _handleUpdate(payload),
-    )
-    .subscribe();
+final subscription = firestore
+    .collection('posts')
+    .where('is_deleted', isEqualTo: false)
+    .where('pending_review', isEqualTo: false)
+    .orderBy('created_at', descending: true)
+    .snapshots()
+    .listen((snapshot) => _handleUpdate(snapshot));
 
-ref.onDispose(() => channel.unsubscribe());
+ref.onDispose(() => subscription.cancel());
 ```
 
 ---
@@ -376,13 +386,13 @@ flutter analyze
 # Get dependencies
 flutter pub get
 
-# Build for web (production)
-flutter build web --release \
-  --dart-define=SUPABASE_URL=$SUPABASE_URL \
-  --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+# Build for web (production) — Firebase config is compiled in from lib/firebase_options.dart
+flutter build web --release
 
-# Deploy to Firebase
-firebase deploy --only hosting
+# Deploy backend (rules, indexes, functions) — NEVER --only hosting for production web
+firebase deploy --only firestore:rules,firestore:indexes,functions
+
+# Deploy production web: push to main; Vercel builds via build.sh (see 2026-04-24 ship log)
 ```
 
 ---
@@ -393,7 +403,7 @@ firebase deploy --only hosting
 - **NEVER** log anonymous_user_id with identifying information
 - **NO** IP tracking on post/comment creation
 - **SEPARATE** authentication from anonymous posting
-- **RLS policies** prevent cross-user data access
+- **Firestore security rules** prevent cross-user data access; anonymous ownership lives only in `posts_private`/`comments_private`
 
 ### Input Sanitization
 ```dart
@@ -472,14 +482,10 @@ test/
 ## Environment Setup
 
 ### Local Development
-Create `.env` file:
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-```
+No `.env` file is needed. Firebase client config is checked in at `lib/firebase_options.dart` (public web keys). Admin operations (backfills, data surgery) use `gcloud auth print-access-token` against project `agnonymous-beta-kyle-2005b`.
 
 ### Production
-Environment variables via Flutter build args or Firebase config.
+Vercel builds via `build.sh` with no secret build args. Backend config lives in `firestore.rules`, `firestore.indexes.json`, and `functions/`.
 
 ---
 
@@ -514,19 +520,26 @@ final value = ref.watch(myProvider);
 ref.read(myProvider.notifier).doSomething();
 ```
 
-### Supabase Queries
+### Firestore Queries
 ```dart
-// Select
-final data = await supabase.from('table').select().eq('id', id);
+// Select (equality filters only match docs that CONTAIN the field — see 2026-07-02 incident log)
+final snap = await firestore
+    .collection('posts')
+    .where('is_deleted', isEqualTo: false)
+    .where('pending_review', isEqualTo: false)
+    .orderBy('created_at', descending: true)
+    .limit(50)
+    .get();
 
-// Insert
-await supabase.from('table').insert({'field': value});
+// Insert with fixed ID inside a transaction (public doc + private ownership mapping)
+final docRef = firestore.collection('posts').doc();
+await firestore.runTransaction((tx) async {
+  tx.set(docRef, publicPayload);
+  tx.set(firestore.collection('posts_private').doc(docRef.id), privatePayload);
+});
 
-// Update
-await supabase.from('table').update({'field': value}).eq('id', id);
-
-// RPC function
-final result = await supabase.rpc('function_name', params: {'param': value});
+// Update specific fields only
+await firestore.collection('posts').doc(id).update({'field': value});
 ```
 
 ### Error Handling
@@ -658,4 +671,4 @@ Reference data in `.claude/context/`:
 
 ---
 
-*Last Updated: March 3, 2026*
+*Last Updated: July 2, 2026 (Firebase migration override; legacy Supabase sections retained for history only)*

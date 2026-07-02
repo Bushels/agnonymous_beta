@@ -460,3 +460,77 @@ Integrated a debtor registry to protect farmers. Shipped to `agnonymous.buperac.
 - **Card UI**: Added a dedicated `ScamReportCard` featuring disputed transaction details, debtor contact fields, quick-copy options, and the truth meter.
 - **Search and Sort**: Integrated search and client-side sorting by value lost (`lossAmount`).
 - **Compilation Fixes**: Renamed standard text field parameter `required` to `isRequired` to avoid Dart reserved keyword clashes and escaped string interpolation on CAD valuations.
+
+---
+
+## 2026-07-02 Incident Log — All Posts Invisible After Firestore Hardening (RESOLVED)
+
+All 155 board posts disappeared from the live feed after the 2026-06-27
+hardening deploy (`ec54c9c`). **No data was lost.** Read this before
+touching `firestore.rules`, the feed queries, or `scripts/migrate.js`.
+
+### Root cause
+
+1. 2026-06-24: `scripts/migrate.js` (local-only, gitignored) copied all
+   155 posts, comments, and votes from Supabase (`ibgsloyjxdopkvwqcqwh`)
+   into Firestore (`agnonymous-beta-kyle-2005b`). At that time the post
+   schema had no `pending_review` or `search_keywords` fields, so the
+   migrated documents were written without them.
+2. 2026-06-25: the C.U.N.T. registry introduced `pending_review`.
+3. 2026-06-27: the hardening commit made every feed query filter on
+   `.where('pending_review', isEqualTo: false)` and made the
+   `firestore.rules` post read rule require
+   `resource.data.pending_review == false`.
+4. Firestore equality filters only match documents that **contain** the
+   field. Every migrated document lacked it, so the feed matched zero
+   posts. The rules denied direct reads of the same docs for the same
+   reason. New posts were unaffected because `create_post_screen.dart`
+   writes `pending_review: false` on create.
+
+Verified before the fix: 155 total docs, 0 with `pending_review`,
+feed-visible count 0. Supabase source count was also 155 (newest post
+2026-06-10), confirming the June 24 migration itself was complete.
+
+### Fix applied (2026-07-02)
+
+One-time backfill via Firestore REST `documents:commit` with
+`updateMask: ['pending_review', 'search_keywords']` (merge, not
+replace; no other fields touched):
+
+- `pending_review: false` on all 155 posts.
+- `search_keywords` generated with a faithful port of
+  `buildSearchKeywords()` from `lib/core/utils/helpers.dart`, so old
+  posts are searchable exactly like new ones.
+
+Verification after the fix, using the app's exact query shapes as an
+**unauthenticated** client (security rules enforced): field audit
+155/155 complete, feed query returned a full page of 50 posts, search
+for "monette" returned 23 posts. No app deploy was needed; the client
+code was already correct.
+
+`scripts/migrate.js` was patched the same day to write both fields, in
+case it is ever re-run.
+
+### Rule going forward
+
+Any change that adds a **required field filter** to the posts (or
+comments) queries, or a required-field check to the read rules, must
+ship with a backfill for pre-existing documents. Firestore will not
+error on the missing field; the documents just silently vanish from
+results, which presents exactly like data loss.
+
+### Known post-migration properties (accepted, not bugs)
+
+- Migrated posts have no `posts_private` ownership mapping and their
+  `user_id` holds the legacy Supabase anonymous ID, so original authors
+  can no longer edit them. Old posts are effectively read-only except
+  for admins.
+- Migrated vote doc IDs use legacy Supabase IDs. Voters cannot change
+  those old votes, and a returning user could cast one fresh vote on an
+  old post under their new Firebase UID.
+- Watched-thread state did not survive the identity change from device
+  ID to Firebase anonymous UID; watch lists started empty.
+- Migrated anonymous posts carry the legacy opaque `user_id` on the
+  public document. It is not linkable to any Firebase identity, but it
+  does allow grouping old posts by the same legacy author. Candidate
+  cleanup: strip `user_id` from public docs where `is_anonymous == true`.
