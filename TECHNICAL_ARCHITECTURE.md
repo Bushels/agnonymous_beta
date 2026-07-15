@@ -101,7 +101,7 @@ Public profile details for registered users (no email address).
 - `vote_count` (Integer): Total votes cast.
 
 #### `/posts/{postId}`
-Public posts and C.U.N.T. scam reports. If a post is created anonymously:
+Standard public posts and account-gated C.U.N.T. scam reports. Approved C.U.N.T. documents are readable only by verified-email users or administrators. If a standard post is created anonymously:
 - `user_id` and `anonymous_user_id` are omitted/null to protect identity.
 - Ownership is verified via `/posts_private/{postId}` document checks.
 
@@ -126,7 +126,7 @@ Document Fields:
 - `image_urls` (Array of Strings): Uploaded image URLs.
 - `image_url` (String?): Primary image URL.
 
-**Public C.U.N.T. scam report fields:**
+**Account-gated C.U.N.T. scam report fields:**
 - `has_images` (Boolean): True when the required private evidence image set exists.
 - `scam_location` (String): Transaction location.
 - `loss_item` (String): Material item lost.
@@ -135,7 +135,7 @@ Document Fields:
 Accused-party PII and C.U.N.T. evidence URLs are not public post fields. They live under `/posts/{postId}/private/details`.
 
 #### `/comments/{commentId}`
-Public comments.
+Comments attached to standard posts are public. Comments attached to C.U.N.T. reports inherit the registry's verified-account or administrator read gate.
 - `id` (String): Document ID.
 - `post_id` (String): Reference to parent post.
 - `content` (String): Comment text.
@@ -185,6 +185,15 @@ Flagged posts/scam reports submitted for review. Document ID format is `{reporte
 #### `/admin_roles/{uid}`
 Defines users with administrative power.
 - `role` (String): E.g., 'moderator' or 'admin'.
+- The signed-in user may read only their own role document so the client can expose moderation tools. Client writes are denied; roles are granted with trusted backend credentials.
+
+#### `/moderation_actions/{actionId}`
+Immutable audit record for C.U.N.T. moderation decisions. Administrators can append and read these records. Client updates and deletes are denied.
+- `post_id` (String): Moderated report ID.
+- `action` (String): `approved` or `rejected`.
+- `moderator_id` (String): Administrator UID.
+- `reason` (String): Required for rejection and empty for approval.
+- `created_at` (Timestamp): Server timestamp.
 
 ---
 
@@ -234,11 +243,11 @@ Triggers when a report document is created.
 ## Security Considerations
 
 1. **Anonymity Guarantee**: Anonymous device IDs are generated on the client side and never joined to registered user profiles or email records. Firestore rules reject public posts carrying any `user_id` when `is_anonymous` is true.
-2. **Access Control**: Users can read all approved public posts, but can only update their own posts (verified by checking `posts_private/{postId}`).
+2. **Access Control**: Everyone can read approved standard posts. Approved C.U.N.T. reports and their comments require a verified-email account or administrator role. Users can update only their own posts, verified through `posts_private/{postId}`.
 3. **Derived Values Protection**: All aggregate counts (`comment_count`, `vote_count`, etc.) are read-only to clients in Firestore security rules.
-4. **Scam Report Moderation**: Scam reports start as `pending_review = true` and are hidden from standard queries until reviewed and approved by an administrator. Contact details are obscured to unverified users to prevent malicious PII exposure.
+4. **Scam Report Moderation**: Scam reports start as `pending_review = true` and are visible only to the owner and administrators until reviewed. Approval or rejection is written atomically with an immutable moderation action. Approved reports, contact details, comments, votes, watches, and evidence remain unavailable to anonymous and unverified users.
 
 ---
 
-*Document Version: 2.0 (Relaunch Override)*
-*Last Updated: April 2026*
+*Document Version: 2.1 (Verified-Account Registry)*
+*Last Updated: July 2026*

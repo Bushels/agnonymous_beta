@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utils/globals.dart';
 import '../../../core/models/models.dart';
+import '../community_categories.dart';
+import 'auth_provider.dart';
 import 'watch_provider.dart';
 
 // --- PAGINATION STATE ---
@@ -84,12 +86,14 @@ class PaginatedPostsState {
 class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
   final int _pageSize = 50; // 50 posts per category for better coverage
   StreamSubscription? _postsSubscription;
+  bool _hasRegistryAccess = false;
 
   @override
   PaginatedPostsState build() {
     final searchQuery = ref.watch(searchQueryProvider);
     final feedSort = ref.watch(feedSortModeProvider);
     final cuntSort = ref.watch(cuntSortProvider);
+    _hasRegistryAccess = ref.watch(hasRegistryAccessProvider);
 
     _initRealTime();
 
@@ -148,6 +152,19 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
       {bool isInitial = false, bool isRefresh = false}) async {
     final categoryState = state.getCategoryState(category);
 
+    if (isRegistryCategory(category) && !_hasRegistryAccess) {
+      final updatedCategoryStates =
+          Map<String, CategoryPostsState>.from(state.categoryStates);
+      updatedCategoryStates[category] = const CategoryPostsState(
+        posts: [],
+        isLoading: false,
+        hasMore: false,
+        currentPage: 0,
+      );
+      state = state.copyWith(categoryStates: updatedCategoryStates);
+      return;
+    }
+
     if (categoryState.isLoading || (!categoryState.hasMore && !isRefresh)) {
       return;
     }
@@ -171,8 +188,14 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
 
       // Apply category filter for specific categories, skip for "all"
       if (category == 'watched') {
-        final watchedIds =
-            ref.read(watchedThreadsProvider).threads.keys.toList();
+        final watchedIds = ref
+            .read(watchedThreadsProvider)
+            .threads
+            .values
+            .where((thread) =>
+                _hasRegistryAccess || !isRegistryCategory(thread.category))
+            .map((thread) => thread.postId)
+            .toList();
         if (watchedIds.isEmpty) {
           final updatedCategoryStates =
               Map<String, CategoryPostsState>.from(state.categoryStates);
@@ -189,7 +212,12 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
         final limitedIds = watchedIds.take(30).toList();
         query = query.where(FieldPath.documentId, whereIn: limitedIds);
       } else {
-        if (category != 'all') {
+        if (category == 'all' && !_hasRegistryAccess) {
+          query = query.where(
+            'category',
+            whereIn: publicBoardCategoryNames,
+          );
+        } else if (category != 'all') {
           query = query.where('category', isEqualTo: category);
         }
       }
@@ -332,10 +360,19 @@ class PaginatedPostsNotifier extends Notifier<PaginatedPostsState> {
 
   void _initRealTime() {
     _postsSubscription?.cancel();
-    _postsSubscription = firestore
+    Query<Map<String, dynamic>> query = firestore
         .collection('posts')
         .where('is_deleted', isEqualTo: false)
-        .where('pending_review', isEqualTo: false)
+        .where('pending_review', isEqualTo: false);
+
+    if (!_hasRegistryAccess) {
+      query = query.where(
+        'category',
+        whereIn: publicBoardCategoryNames,
+      );
+    }
+
+    _postsSubscription = query
         .orderBy('created_at', descending: true)
         .limit(_pageSize)
         .snapshots()
@@ -584,6 +621,19 @@ final trendingStatsProvider = FutureProvider<TrendingStats>((ref) async {
     trendingCategory: trendingCategory,
     mostPopularPostTitle: mostPopularPost?.title ?? 'No posts yet',
   );
+});
+
+final pendingRegistryReportCountProvider = StreamProvider<int>((ref) {
+  final isAdmin = ref.watch(isAdminProvider).value ?? false;
+  if (!isAdmin) return Stream.value(0);
+
+  return firestore
+      .collection('posts')
+      .where('category', whereIn: registryCategoryNames)
+      .where('is_deleted', isEqualTo: false)
+      .where('pending_review', isEqualTo: true)
+      .snapshots()
+      .map((snapshot) => snapshot.size);
 });
 
 enum CuntSortMode { latest, highestLoss }

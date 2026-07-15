@@ -185,6 +185,9 @@ class AuthNotifier extends Notifier<AuthState> {
       await currentUser.reload();
       final latestUser = firebaseAuth.currentUser;
       if (latestUser != null) {
+        // Firestore rules read email_verified from the ID token, not only from
+        // the refreshed FirebaseUser object.
+        await latestUser.getIdToken(true);
         final privateRef = firestore
             .collection('user_profiles')
             .doc(latestUser.uid)
@@ -343,4 +346,15 @@ final isAdminProvider = StreamProvider<bool>((ref) {
       .doc(user.uid)
       .snapshots()
       .map((doc) => doc.exists);
+});
+
+/// Registry access requires a verified email account or an explicit admin role.
+final hasRegistryAccessProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authProvider);
+  final user = auth.user;
+  final isVerifiedAccount = user != null &&
+      !user.isAnonymous &&
+      (user.emailVerified || auth.profile?.emailVerified == true);
+  final isAdmin = ref.watch(isAdminProvider).value ?? false;
+  return isVerifiedAccount || isAdmin;
 });

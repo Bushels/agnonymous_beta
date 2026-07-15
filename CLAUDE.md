@@ -7,8 +7,8 @@ This section is the current source of truth and overrides older dashboard, marke
 Agnonymous is a **mobile-first anonymous posting board**:
 
 - No sign up or sign in for standard usage. Anonymous reading, posting, commenting, and voting are fully supported.
-- Optional accounts exist for perks and the C.U.N.T. (Chronic Unpaid Network Therapy) registry: submitting reports under the `C.U.N.T.` category requires a verified sign-in; everyone can view, search, comment, and vote on them.
-- Monette is the first-class launch room. Monette posts can optionally reference a public farming area.
+- Optional accounts exist for perks and the C.U.N.T. (Chronic Unpaid Network Therapy) registry: the entire registry requires a verified sign-in, including reading, searching, commenting, voting, watching, and submitting reports.
+- All Rooms is the default landing view. Monette remains a first-class room, and Monette posts can optionally reference a public farming area.
 - The bottom post control is icon-only.
 - Watch state is tied to the Firebase anonymous auth UID (`watches/{uid}_{postId}`), not a user account.
 - The truth meter uses three board signals: thumbs up, neutral, thumbs down.

@@ -1,12 +1,12 @@
 # Agnonymous Product Vision
 
-Last updated: 2026-04-24
+Last updated: 2026-07-15
 
 ## Current Decision
 
 Agnonymous is a mobile-first anonymous agriculture posting board.
 
-The relaunch is a return to the original purpose: people can read, post, comment, vote, watch, and refresh without creating an account. Monette is the first-class launch room.
+The relaunch is a return to the original purpose: people can read, post, comment, vote, watch, and refresh without creating an account. All Rooms is the landing view, and Monette remains a first-class room.
 
 ## Product Promise
 
@@ -16,7 +16,7 @@ Anonymous agriculture discussion. No sign up. No pricing board. Just the thread.
 
 These are out of v1:
 
-- Sign up or sign in for standard posting. Standard reading, posting, commenting, and voting remain completely anonymous with no sign-up wall. Sign in or registration is only required to post to the C.U.N.T. Registry to prevent fake or anonymous bad debtor claims.
+- Sign up or sign in for the standard board. Standard reading, posting, commenting, and voting remain completely anonymous with no sign-up wall. The entire C.U.N.T. Registry requires a verified account, including reading and interacting with approved reports. Submitting reports also requires a verified account.
 - Username-first posting (except on C.U.N.T. reports which use the author's verified profile name).
 - Market intelligence dashboards.
 - Fertilizer or chemical input pricing.
@@ -31,7 +31,7 @@ Older repo documents still describe some of those ideas. Treat them as legacy co
 ## Core V1 Loop
 
 1. Reader opens the board on mobile.
-2. Monette Room loads first.
+2. All Rooms loads first.
 3. Reader can switch rooms or search.
 4. Reader taps the bottom icon-only post button.
 5. Reader posts anonymously with category, title, details, optional region, optional photos, a local display label, and an optional Monette farming-area reference when posting in Monette Room.
@@ -44,7 +44,7 @@ Older repo documents still describe some of those ideas. Treat them as legacy co
 
 Standard users do not require account identity in v1. They read, write, comment, and vote completely anonymously.
 
-However, to protect against fake reviews or fraudulent debt complaints, posting to the C.U.N.T. Registry requires registration and authentication.
+However, to protect against fake reviews or fraudulent debt complaints, the entire C.U.N.T. Registry requires a registered account with a verified email. Approved reports, their comments, votes, watches, private details, and evidence remain unavailable to anonymous and unverified users. Administrators retain access for moderation.
 
 For standard interactions, the app uses a locally stored anonymous device ID:
 
@@ -176,16 +176,15 @@ Do not bend the existing auth-user notification table into anonymous notificatio
 ## Next Highest-Value Work
 
 1. Fix any live-data rendering issues from old posts.
-2. Add report/hide moderation path.
-3. Add shareable thread route.
-4. Decide whether the historical backfill migration should be applied.
-6. Add legal-risk copy for naming people or making financial misconduct claims.
-7. Tune mobile density with real posts, not empty states only.
+2. Add shareable thread route.
+3. Decide whether the historical backfill migration should be applied.
+4. Complete counsel review of the C.U.N.T. registry policy and user-facing legal-risk copy before accepting real allegations.
+5. Tune mobile density with real posts, not empty states only.
 
 ## Definition Of Done For Relaunch V1
 
 - A new visitor can use the board without sign-in.
-- Monette Room opens cleanly on mobile.
+- All Rooms opens cleanly on mobile, with Monette available as a first-class room.
 - Posting works anonymously.
 - Commenting works anonymously.
 - Voting works anonymously with three visible choices.

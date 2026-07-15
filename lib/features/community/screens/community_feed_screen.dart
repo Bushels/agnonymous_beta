@@ -5,6 +5,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../create_post_screen.dart';
 import 'create_scam_report_screen.dart';
+import 'scam_moderation_screen.dart';
 import '../board_theme.dart';
 import '../community_categories.dart';
 import '../providers/community_providers.dart';
@@ -87,24 +88,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  void _openCreatePost() {
-    if (selectedCategory == 'C.U.N.T.' || selectedCategory == 'Scams') {
-      final auth = ref.read(authProvider);
-      if (auth.user == null || auth.user!.isAnonymous) {
-        showDialog(
-          context: context,
-          barrierDismissible: true,
-          builder: (context) => AuthDialog(ref: ref),
-        );
+  Future<bool> _ensureRegistryAccess() async {
+    if (ref.read(hasRegistryAccessProvider)) return true;
+
+    final auth = ref.read(authProvider);
+    if (auth.user != null && !auth.user!.isAnonymous) {
+      await ref.read(authProvider.notifier).syncEmailVerification();
+      if (ref.read(hasRegistryAccessProvider)) return true;
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-                'You must sign in or register to publish a C.U.N.T. report.'),
+            content:
+                Text('Verify your email before opening the C.U.N.T. Registry.'),
             backgroundColor: Colors.orange,
           ),
         );
-        return;
       }
+      return false;
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => AuthDialog(ref: ref),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Sign in with a verified account to open the C.U.N.T. Registry.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+    return false;
+  }
+
+  Future<void> _selectCategory(String category) async {
+    if (isRegistryCategory(category) && !await _ensureRegistryAccess()) {
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      selectedCategory = category;
+      searchQuery = '';
+      isSearching = false;
+    });
+    _searchDebounceTimer?.cancel();
+    ref.read(searchQueryProvider.notifier).set('');
+  }
+
+  Future<void> _openCreatePost() async {
+    if (isRegistryCategory(selectedCategory)) {
+      if (!await _ensureRegistryAccess()) return;
+      if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => const CreateScamReportScreen(),
@@ -126,6 +164,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasRegistryAccess = ref.watch(hasRegistryAccessProvider);
+    if (!hasRegistryAccess && isRegistryCategory(selectedCategory)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && isRegistryCategory(selectedCategory)) {
+          setState(() => selectedCategory = '');
+        }
+      });
+    }
+
     return Scaffold(
       backgroundColor: BoardColors.prairie,
       body: AmbientBackground(
@@ -167,15 +214,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 pinned: true,
                 delegate: CategoryChipsDelegate(
                   selectedCategory: selectedCategory,
-                  onCategoryChanged: (category) {
-                    setState(() {
-                      selectedCategory = category;
-                      searchQuery = '';
-                      isSearching = false;
-                    });
-                    _searchDebounceTimer?.cancel();
-                    ref.read(searchQueryProvider.notifier).set('');
-                  },
+                  registryUnlocked: hasRegistryAccess,
+                  onCategoryChanged: _selectCategory,
                 ),
               ),
               PostFeedSliver(
@@ -463,6 +503,9 @@ class _IdentityMenuButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
     final isSignedIn = ref.watch(isSignedInProvider);
+    final isAdmin = ref.watch(isAdminProvider).value ?? false;
+    final pendingReports =
+        ref.watch(pendingRegistryReportCountProvider).value ?? 0;
     final profile = auth.profile;
 
     final Widget menuButtonIcon;
@@ -502,6 +545,12 @@ class _IdentityMenuButton extends ConsumerWidget {
           _showAuthDialog(context, ref);
         } else if (value == 'profile' && profile != null) {
           _showProfileDialog(context, ref, profile);
+        } else if (value == 'moderation' && isAdmin) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const ScamModerationScreen(),
+            ),
+          );
         } else if (value == 'signout') {
           await ref.read(authProvider.notifier).signOut();
           if (context.mounted) {
@@ -533,6 +582,26 @@ class _IdentityMenuButton extends ConsumerWidget {
                   ],
                 ),
               ),
+              if (isAdmin)
+                PopupMenuItem<String>(
+                  value: 'moderation',
+                  child: Row(
+                    children: [
+                      const FaIcon(
+                        FontAwesomeIcons.shieldHalved,
+                        size: 14,
+                        color: BoardColors.amber,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        pendingReports == 0
+                            ? 'Moderation Queue'
+                            : 'Moderation Queue ($pendingReports)',
+                        style: const TextStyle(color: BoardColors.ink),
+                      ),
+                    ],
+                  ),
+                ),
               PopupMenuItem<String>(
                 value: 'signout',
                 child: Row(
@@ -1051,10 +1120,12 @@ class _ProfileDialogState extends ConsumerState<_ProfileDialog> {
 class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
   final String selectedCategory;
   final Function(String) onCategoryChanged;
+  final bool registryUnlocked;
 
   const CategoryChipsDelegate({
     required this.selectedCategory,
     required this.onCategoryChanged,
+    required this.registryUnlocked,
   });
 
   @override
@@ -1063,6 +1134,7 @@ class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
     return CategoryChips(
       selectedCategory: selectedCategory,
       onCategoryChanged: onCategoryChanged,
+      registryUnlocked: registryUnlocked,
     );
   }
 
@@ -1074,7 +1146,8 @@ class CategoryChipsDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant CategoryChipsDelegate oldDelegate) {
-    return oldDelegate.selectedCategory != selectedCategory;
+    return oldDelegate.selectedCategory != selectedCategory ||
+        oldDelegate.registryUnlocked != registryUnlocked;
   }
 }
 

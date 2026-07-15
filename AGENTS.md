@@ -7,8 +7,8 @@ This section is the current source of truth and overrides older dashboard, marke
 Agnonymous is a **mobile-first anonymous posting board**:
 
 - No sign up or sign in for standard usage. Anonymous reading, posting, commenting, and voting are fully supported.
-- Monette is the first-class launch room.
-- C.U.N.T. (Chronic Unpaid Network Therapy) registry is a first-class board registry under category 'C.U.N.T.'. Submitting debtor/unpaid reports is restricted to authenticated (logged-in) users to prevent fraudulent claims, while standard users can view, search, comment, and vote.
+- All Rooms is the default landing view. Monette remains a first-class room.
+- C.U.N.T. (Chronic Unpaid Network Therapy) registry is a first-class board registry under category 'C.U.N.T.'. The entire registry requires a verified-email account, including reading, searching, commenting, voting, watching, and submitting reports. Administrators retain access for moderation.
 - Monette posts can optionally reference a public farming area from the Monette-only area menu.
 - The bottom post control is icon-only.
 - Watch state is tied to the Firebase anonymous auth UID (`watches/{uid}_{postId}`), not a user account.
@@ -21,7 +21,7 @@ Agnonymous is a **mobile-first anonymous posting board**:
 Since 2026-06-25 the entire backend is **Firebase** project `agnonymous-beta-kyle-2005b`:
 
 - **Cloud Firestore** holds `posts`, `comments`, `votes`, `watches`, `reports`, `stats`, `user_profiles`, `usernames`, plus private ownership mappings `posts_private` / `comments_private` (anonymous public docs carry no author UID).
-- **Firebase Auth**: every visitor gets an anonymous session via `signInAnonymously()` in `lib/main.dart`; email accounts are optional and required only for C.U.N.T. reports.
+- **Firebase Auth**: every visitor gets an anonymous session via `signInAnonymously()` in `lib/main.dart`; email accounts are optional for the standard board and required with email verification for all C.U.N.T. Registry access.
 - **Security & backend deploys**: `firestore.rules` + `firestore.indexes.json` + Cloud Functions in `functions/`. Deploy with `firebase deploy --only firestore:rules,firestore:indexes,functions`.
 - **Web production is still Vercel** (`agnonymous.buperac.com`, deploys from git). Do not use `firebase deploy --only hosting` for production web.
 - The old Supabase project (`ibgsloyjxdopkvwqcqwh`) was migrated into Firestore on 2026-06-24 (155 posts) and is retained only as a pre-migration backup. Do not re-add `supabase_flutter`, RLS policies, RPCs, or the `x-anonymous-id` header pattern.

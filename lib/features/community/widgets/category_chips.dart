@@ -8,11 +8,13 @@ import '../community_categories.dart';
 class CategoryChips extends StatelessWidget {
   final String selectedCategory;
   final Function(String) onCategoryChanged;
+  final bool registryUnlocked;
 
   const CategoryChips({
     super.key,
     required this.selectedCategory,
     required this.onCategoryChanged,
+    this.registryUnlocked = false,
   });
 
   @override
@@ -58,7 +60,9 @@ class CategoryChips extends StatelessWidget {
               padding: const EdgeInsets.only(right: 8),
               child: _CategoryChip(
                 label: category.name,
-                icon: category.icon,
+                icon: isRegistryCategory(category.name) && !registryUnlocked
+                    ? '\u{1F512}'
+                    : category.icon,
                 selected: selectedCategory == category.name,
                 onTap: () {
                   AnalyticsService.instance.logCategoryFilter(

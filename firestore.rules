@@ -10,6 +10,14 @@ service cloud.firestore {
       return isAuthenticated() && exists(/databases/$(database)/documents/admin_roles/$(request.auth.uid));
     }
 
+    function hasVerifiedAccount() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
+    function hasRegistryAccess() {
+      return hasVerifiedAccount() || isAdmin();
+    }
+
     function hasValidInitialPostState() {
       return request.resource.data.comment_count == 0
              && request.resource.data.vote_count == 0
@@ -27,12 +35,17 @@ service cloud.firestore {
     function isActivePost(postId) {
       return exists(/databases/$(database)/documents/posts/$(postId))
              && get(/databases/$(database)/documents/posts/$(postId)).data.is_deleted == false
-             && get(/databases/$(database)/documents/posts/$(postId)).data.pending_review == false;
+             && get(/databases/$(database)/documents/posts/$(postId)).data.pending_review == false
+             && (
+               !isScamCategory(get(/databases/$(database)/documents/posts/$(postId)).data.category)
+               || hasRegistryAccess()
+             );
     }
 
     function isPostOwner(postId, uid) {
       return (
         exists(/databases/$(database)/documents/posts/$(postId))
+        && get(/databases/$(database)/documents/posts/$(postId)).data.keys().hasAny(['user_id'])
         && get(/databases/$(database)/documents/posts/$(postId)).data.user_id == uid
       ) || (
         exists(/databases/$(database)/documents/posts_private/$(postId))
@@ -114,7 +127,11 @@ service cloud.firestore {
 
     // Rules for posts
     match /posts/{postId} {
-      allow read: if (resource.data.is_deleted == false && resource.data.pending_review == false)
+      allow read: if (
+                      resource.data.is_deleted == false
+                      && resource.data.pending_review == false
+                      && (!isScamCategory(resource.data.category) || hasRegistryAccess())
+                    )
                     || isAdmin()
                     || (
                       isAuthenticated()
@@ -254,12 +271,15 @@ service cloud.firestore {
 
     // Rules for comments
     match /comments/{commentId} {
-      allow read: if true;
+      allow read: if isActivePost(resource.data.post_id)
+                    || isAdmin()
+                    || (
+                      isAuthenticated()
+                      && isPostOwner(resource.data.post_id, request.auth.uid)
+                    );
       allow create: if isAuthenticated()
                     && request.resource.data.is_deleted == false
-                    && exists(/databases/$(database)/documents/posts/$(request.resource.data.post_id))
-                    && get(/databases/$(database)/documents/posts/$(request.resource.data.post_id)).data.is_deleted == false
-                    && get(/databases/$(database)/documents/posts/$(request.resource.data.post_id)).data.pending_review == false
+                    && isActivePost(request.resource.data.post_id)
                     && (
                       request.resource.data.is_anonymous == false
                         ? (
@@ -318,7 +338,39 @@ service cloud.firestore {
 
     // Rules for watches
     match /watches/{watchId} {
-      allow read, write: if isAuthenticated() && watchId.matches('^' + request.auth.uid + '_.*');
+      allow read: if isAuthenticated()
+                    && watchId.matches('^' + request.auth.uid + '_.*')
+                    && (!isScamCategory(resource.data.category) || hasRegistryAccess());
+      allow create, update: if isAuthenticated()
+                    && watchId.matches('^' + request.auth.uid + '_.*')
+                    && request.resource.data.user_id == request.auth.uid
+                    && (!isScamCategory(request.resource.data.category) || hasRegistryAccess())
+                    && request.resource.data.keys().hasOnly([
+                      'post_id', 'title', 'category', 'last_seen_comment_count',
+                      'notifications_enabled', 'watched_at', 'updated_at', 'user_id'
+                    ]);
+      allow delete: if isAuthenticated() && watchId.matches('^' + request.auth.uid + '_.*');
+    }
+
+    // Users may inspect only their own role document; role grants are Admin SDK only.
+    match /admin_roles/{userId} {
+      allow read: if isAuthenticated() && userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Immutable audit trail for registry moderation decisions.
+    match /moderation_actions/{actionId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+                    && request.resource.data.moderator_id == request.auth.uid
+                    && request.resource.data.action in ['approved', 'rejected']
+                    && request.resource.data.post_id is string
+                    && request.resource.data.reason is string
+                    && request.resource.data.created_at is timestamp
+                    && request.resource.data.keys().hasOnly([
+                      'post_id', 'action', 'moderator_id', 'reason', 'created_at'
+                    ]);
+      allow update, delete: if false;
     }
 
     // Rules for global/trending stats (Client can only read; writes restricted to Admin SDK)

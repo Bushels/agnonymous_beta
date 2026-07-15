@@ -84,6 +84,13 @@ Firestore Security Rules enforce strict access controls and field immutability d
 4. **Vote Visibility**
    - Reads on `/votes/{voteId}` are restricted. A user can only read their own vote documents (ID matches `^authUid_.*`).
 
+5. **C.U.N.T. Registry Access Boundary**
+   - Approved registry posts and their comments are readable only by verified-email users or administrators.
+   - Anonymous and unverified All Rooms queries use a positive allowlist of standard categories so registry documents cannot enter the public feed.
+   - Registry votes, reports, and watches inherit the same access gate through the parent-post check.
+   - `/admin_roles/{uid}` is self-readable for role discovery but cannot be written by clients.
+   - `/moderation_actions/{actionId}` is an admin-only, append-only audit trail.
+
 ---
 
 ### **Layer 3: Cloud Storage Security Rules**
@@ -144,9 +151,11 @@ To prevent client forging of scores, derived counts, and reputation points, all 
 **Files:** `lib/features/community/screens/create_scam_report_screen.dart`, `lib/features/community/widgets/scam_report_card.dart`
 
 To protect individual privacy and prevent false claims:
-1. **Moderation Status**: All C.U.N.T. scam reports are created with `pending_review: true` and are omitted from public feeds by default. Admins must approve the report (setting `pending_review = false`) before it displays publicly.
-2. **Private Details Lock**: Accused-party contact details and evidence URLs live under `/posts/{postId}/private/details`, not on the public post document. Those details are only readable by admins, the report owner, or verified-email users after the report is approved and not deleted.
-3. **Evidence Requirement**: At least one piece of image/document evidence is strictly required to submit a scam report.
+1. **Whole-Registry Account Gate**: Approved C.U.N.T. reports and all related interaction data require a verified-email account or administrator role. Anonymous and unverified users cannot read or interact with the registry.
+2. **Moderation Status**: All C.U.N.T. scam reports are created with `pending_review: true` and are visible only to the report owner and administrators. Admins must approve the report before it appears to verified registry users.
+3. **Private Details Lock**: Accused-party contact details and evidence URLs live under `/posts/{postId}/private/details`, not on the main post document. Those details are readable only by administrators, the report owner, or verified-email users after the report is approved and not deleted.
+4. **Evidence Requirement**: At least one image of supporting evidence is required to submit a scam report.
+5. **Audited Decisions**: Approval and rejection update the report and append an immutable `/moderation_actions` record in one atomic batch. Rejections require a reason.
 
 ---
 
@@ -163,5 +172,5 @@ HTTP response headers block various browser-based vulnerabilities:
 
 ---
 
-*Document Version: 2.0 (Relaunch Override)*
-*Last Updated: April 2026*
+*Document Version: 2.1 (Verified-Account Registry)*
+*Last Updated: July 2026*

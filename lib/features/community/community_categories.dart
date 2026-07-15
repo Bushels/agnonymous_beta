@@ -31,6 +31,31 @@ const List<CommunityCategory> boardCategories = [
 ];
 
 const String defaultBoardCategory = 'Monette';
+const List<String> registryCategoryNames = ['C.U.N.T.', 'Scams'];
+
+// Firestore rules cannot prove that a NOT IN query excludes protected posts.
+// Keep the anonymous All Rooms feed on a positive public-category allow-list.
+const List<String> publicBoardCategoryNames = [
+  'Ag Business',
+  'Chemicals',
+  'Crops',
+  'Equipment',
+  'Farming',
+  'General',
+  'Grain',
+  'Input Prices',
+  'Land',
+  'Livestock',
+  'Markets',
+  'Monette',
+  'Other',
+  'Politics',
+  'Ranching',
+  'Weather',
+];
+
+bool isRegistryCategory(String category) =>
+    registryCategoryNames.contains(category);
 
 const List<MonetteArea> monetteAreas = [
   MonetteArea(name: 'Hafford', region: 'West-Central SK'),

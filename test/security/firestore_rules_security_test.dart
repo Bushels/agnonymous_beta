@@ -91,12 +91,82 @@ void main() {
             "'post_id', 'created_at'])"),
       );
     });
+
+    test('registry reads require a verified account or admin role', () {
+      final accessHelper = _functionBody(rules, 'hasRegistryAccess');
+      final postsBlock = _matchBlock(rules, 'posts/{postId}');
+
+      expect(accessHelper, contains('hasVerifiedAccount() || isAdmin()'));
+      expect(
+        postsBlock,
+        contains(
+            '!isScamCategory(resource.data.category) || hasRegistryAccess()'),
+      );
+    });
+
+    test('registry comments, watches, and interactions share the same gate',
+        () {
+      final activePostHelper = _functionBodyWithArguments(
+        rules,
+        'isActivePost',
+        'postId',
+      );
+      final watchesBlock = _matchBlock(rules, 'watches/{watchId}');
+
+      expect(activePostHelper, contains('|| hasRegistryAccess()'));
+      expect(watchesBlock, contains('|| hasRegistryAccess()'));
+    });
+
+    test('anonymous post ownership checks tolerate omitted public user ids',
+        () {
+      final ownerHelper = _functionBodyWithArguments(
+        rules,
+        'isPostOwner',
+        'postId, uid',
+      );
+
+      expect(
+        ownerHelper,
+        contains("data.keys().hasAny(['user_id'])"),
+      );
+    });
+
+    test('admin roles are self-readable but cannot be client-written', () {
+      final adminBlock = _matchBlock(rules, 'admin_roles/{userId}');
+
+      expect(adminBlock, contains('userId == request.auth.uid'));
+      expect(adminBlock, contains('allow write: if false'));
+    });
+
+    test('moderation decisions are admin-only and immutable', () {
+      final moderationBlock =
+          _matchBlock(rules, 'moderation_actions/{actionId}');
+
+      expect(moderationBlock, contains('allow read: if isAdmin()'));
+      expect(moderationBlock, contains('allow create: if isAdmin()'));
+      expect(moderationBlock, contains("action in ['approved', 'rejected']"));
+      expect(moderationBlock, contains('allow update, delete: if false'));
+    });
   });
 }
 
 String _functionBody(String source, String name) {
   final pattern = RegExp(
     'function $name\\(\\) \\{([\\s\\S]*?)\\n    \\}',
+    multiLine: true,
+  );
+  final match = pattern.firstMatch(source);
+  expect(match, isNotNull, reason: 'Missing Firestore rules helper $name');
+  return match!.group(1)!;
+}
+
+String _functionBodyWithArguments(
+  String source,
+  String name,
+  String arguments,
+) {
+  final pattern = RegExp(
+    'function $name\\($arguments\\) \\{([\\s\\S]*?)\\n    \\}',
     multiLine: true,
   );
   final match = pattern.firstMatch(source);

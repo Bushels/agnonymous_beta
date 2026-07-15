@@ -145,6 +145,12 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
   }
 
   Future<void> _showDeleteConfirmation() async {
+    final isAdmin = ref.read(isAdminProvider).value ?? false;
+    if (widget.post.pendingReview && isAdmin) {
+      await _showRejectDialog();
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -175,6 +181,112 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
 
     if (confirmed == true && mounted) {
       await _deletePost();
+    }
+  }
+
+  Future<void> _showRejectDialog() async {
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: const Text('Reject C.U.N.T. Report?',
+            style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: reasonController,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 4,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Reason required',
+            labelStyle: TextStyle(color: Colors.white70),
+            hintText:
+                'Missing evidence, unverifiable claim, duplicate, or other reason',
+            hintStyle: TextStyle(color: Colors.white38),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, reasonController.text),
+            child: const Text('Reject',
+                style: TextStyle(color: Color(0xFFEF4444))),
+          ),
+        ],
+      ),
+    );
+    reasonController.dispose();
+
+    final cleanReason = reason?.trim() ?? '';
+    if (reason == null || !mounted) return;
+    if (cleanReason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A rejection reason is required.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    await _rejectPost(cleanReason);
+  }
+
+  Future<void> _rejectPost(String reason) async {
+    if (_isLoading) return;
+    try {
+      setState(() => _isLoading = true);
+      final moderatorId = firebaseAuth.currentUser?.uid;
+      if (moderatorId == null) throw 'Not authenticated';
+
+      final postRef = firestore.collection('posts').doc(widget.post.id);
+      final auditRef = firestore.collection('moderation_actions').doc();
+      final batch = firestore.batch();
+      batch.update(postRef, {
+        'is_deleted': true,
+        'deleted_at': FieldValue.serverTimestamp(),
+        'deleted_by': moderatorId,
+        'rejected_at': FieldValue.serverTimestamp(),
+        'rejected_by': moderatorId,
+      });
+      batch.set(auditRef, {
+        'post_id': widget.post.id,
+        'action': 'rejected',
+        'moderator_id': moderatorId,
+        'reason': reason,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+
+      final currentCategories =
+          ref.read(paginatedPostsProvider).categoryStates.keys.toList();
+      for (final category in currentCategories) {
+        ref.read(paginatedPostsProvider.notifier).refreshCategory(category);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Report rejected and removed from queue.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to reject report: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -947,7 +1059,7 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
           onPressed: _showDeleteConfirmation,
           icon: const Icon(Icons.delete_outline_rounded,
               color: Color(0xFFEF4444), size: 14),
-          label: const Text('Delete',
+          label: const Text('Reject',
               style: TextStyle(
                   color: Color(0xFFEF4444),
                   fontSize: 12,
@@ -966,10 +1078,25 @@ class _ScamReportCardState extends ConsumerState<ScamReportCard> {
     if (_isLoading) return;
     try {
       setState(() => _isLoading = true);
-      await firestore.collection('posts').doc(widget.post.id).update({
+      final moderatorId = firebaseAuth.currentUser?.uid;
+      if (moderatorId == null) throw 'Not authenticated';
+
+      final postRef = firestore.collection('posts').doc(widget.post.id);
+      final auditRef = firestore.collection('moderation_actions').doc();
+      final batch = firestore.batch();
+      batch.update(postRef, {
         'pending_review': false,
         'approved_at': FieldValue.serverTimestamp(),
+        'approved_by': moderatorId,
       });
+      batch.set(auditRef, {
+        'post_id': widget.post.id,
+        'action': 'approved',
+        'moderator_id': moderatorId,
+        'reason': '',
+        'created_at': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
 
       final currentCategories =
           ref.read(paginatedPostsProvider).categoryStates.keys.toList();

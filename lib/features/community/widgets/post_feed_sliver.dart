@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../core/utils/globals.dart';
 import '../board_theme.dart';
+import '../community_categories.dart';
+import '../providers/auth_provider.dart';
 import '../providers/community_providers.dart';
 import 'post_card.dart';
 import 'scam_report_card.dart';
@@ -59,6 +61,32 @@ class _PostFeedSliverState extends ConsumerState<PostFeedSliver> {
 
   @override
   Widget build(BuildContext context) {
+    final hasRegistryAccess = ref.watch(hasRegistryAccessProvider);
+    if (isRegistryCategory(widget.selectedCategory) && !hasRegistryAccess) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            children: [
+              const Icon(Icons.lock_rounded,
+                  color: BoardColors.amber, size: 44),
+              const SizedBox(height: 12),
+              Text(
+                'Verified account required',
+                style: BoardText.title,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Sign in and verify your email to open the registry.',
+                textAlign: TextAlign.center,
+                style: BoardText.body.copyWith(color: BoardColors.muted),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final postsState = ref.watch(paginatedPostsProvider);
 
     // Determine which category to display

@@ -147,6 +147,10 @@ class _CreateScamReportScreenState
         throw 'You must verify your email address before publishing a C.U.N.T. report. Check your inbox for the verification email.';
       }
 
+      // Refresh the claim used by Firestore security rules immediately after
+      // the user verifies their email.
+      await latestUser.getIdToken(true);
+
       final uid = latestUser.uid;
       final imageLinks = await _uploadImages(uid);
 
