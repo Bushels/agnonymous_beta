@@ -84,14 +84,12 @@ class _CategoryChip extends StatelessWidget {
   final String icon;
   final bool selected;
   final VoidCallback onTap;
-  final String? tooltip;
 
   const _CategoryChip({
     required this.label,
     required this.icon,
     required this.selected,
     required this.onTap,
-    this.tooltip,
   });
 
   @override
@@ -102,7 +100,7 @@ class _CategoryChip extends StatelessWidget {
             ? BoardColors.amber
             : boardCategoryColor(label));
 
-    final child = InkWell(
+    return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: AnimatedContainer(
@@ -141,14 +139,5 @@ class _CategoryChip extends StatelessWidget {
         ),
       ),
     );
-
-    if (tooltip != null) {
-      return Tooltip(
-        message: tooltip!,
-        child: child,
-      );
-    }
-
-    return child;
   }
 }
