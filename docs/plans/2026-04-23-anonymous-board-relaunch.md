@@ -521,16 +521,59 @@ results, which presents exactly like data loss.
 
 ### Known post-migration properties (accepted, not bugs)
 
-- Migrated posts have no `posts_private` ownership mapping and their
-  `user_id` holds the legacy Supabase anonymous ID, so original authors
-  can no longer edit them. Old posts are effectively read-only except
-  for admins.
+- Migrated posts have no `posts_private` ownership mapping (and the
+  public author IDs were stripped later the same day, see the follow-up
+  backfill below), so original authors can no longer edit them. Old
+  posts are effectively read-only except for admins.
 - Migrated vote doc IDs use legacy Supabase IDs. Voters cannot change
   those old votes, and a returning user could cast one fresh vote on an
   old post under their new Firebase UID.
 - Watched-thread state did not survive the identity change from device
   ID to Firebase anonymous UID; watch lists started empty.
-- Migrated anonymous posts carry the legacy opaque `user_id` on the
+- ~~Migrated anonymous posts carry the legacy opaque `user_id` on the
   public document. It is not linkable to any Firebase identity, but it
   does allow grouping old posts by the same legacy author. Candidate
-  cleanup: strip `user_id` from public docs where `is_anonymous == true`.
+  cleanup: strip `user_id` from public docs where `is_anonymous == true`.~~
+  **Resolved 2026-07-02** — see the follow-up backfill below.
+
+### Follow-up backfill (2026-07-02, later same day) — legacy author IDs stripped
+
+The candidate cleanup above was executed the same day via Firestore REST
+`documents:commit` with `updateMask` **field deletes** (merge, not
+replace; no other fields touched — same mechanism as the pending_review
+fix). Scope was widened after a dry run, with per-step approval:
+
+- **Posts** (one atomic batch, 154 writes, commit time
+  `2026-07-02T15:07:44Z`): deleted `user_id`/`anonymous_user_id` from
+  every `is_anonymous == true` post — the 57 legacy Supabase UUIDs (52
+  distinct legacy authors, groupable) **plus** 97 posts found in the dry
+  run carrying unique `user_migrated_N` seed placeholders (not
+  groupable, but junk identity fields). The 1 signed post keeps its
+  `user_id`.
+- **Comments** (one atomic batch, 73 writes, commit time
+  `2026-07-02T15:18:50Z`): comments are publicly readable
+  (`allow read: if true`) and all 75 migrated comments carried a legacy
+  UUID `anonymous_user_id` — the same grouping leak, plus a potential
+  cross-link between named and anonymous content by the same legacy
+  author. Stripped it from the 73 anonymous comments (43 distinct legacy
+  authors). The 2 signed comments keep theirs, mirroring the signed
+  post.
+
+Verification (same pattern as the pending_review fix): admin field audit
+found 0 anonymous docs still carrying an author ID (154 posts + 73
+comments clean); per-doc integrity diffs showed exactly the masked
+fields removed and nothing else changed; **unauthenticated**
+(security-rules-enforced) reads — the app's feed-shape query returned
+all 155 posts and a full comments read returned all 75 — surfaced zero
+anonymous docs exposing an author ID.
+
+Votes still use legacy IDs in doc IDs and `anonymous_user_id`, but votes
+are owner-read-only under the rules, so nothing is publicly exposed (the
+accepted property above stands).
+
+Tooling: `scripts/strip_legacy_author_ids.js` (local-only, next to
+`migrate.js`) with dry-run / apply / verify modes; the manifests of the
+exact doc IDs touched are `scripts/legacy_id_strip_manifest.json` and
+`scripts/legacy_id_strip_comments_manifest.json`. `scripts/migrate.js`
+was patched the same day to stop writing author IDs onto public
+anonymous posts and comments if it is ever re-run.

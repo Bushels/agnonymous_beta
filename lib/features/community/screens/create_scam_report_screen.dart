@@ -274,9 +274,28 @@ class _CreateScamReportScreenState
     return Scaffold(
       backgroundColor: BoardColors.prairie,
       appBar: AppBar(
-        title: Text('File C.U.N.T. Report',
-            style: GoogleFonts.outfit(
-                fontWeight: FontWeight.bold, color: BoardColors.ink)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'File C.U.N.T. Report',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.bold,
+                color: BoardColors.ink,
+                fontSize: 18,
+              ),
+            ),
+            Text(
+              'Chronic Unpaid Network Therapy',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: BoardColors.amber,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(

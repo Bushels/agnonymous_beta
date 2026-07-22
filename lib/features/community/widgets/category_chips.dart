@@ -56,10 +56,12 @@ class CategoryChips extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           ...boardCategories.map((category) {
+            final isCunt = category.name == 'C.U.N.T.';
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _CategoryChip(
                 label: category.name,
+                tooltip: isCunt ? cuntFullName : null,
                 icon: isRegistryCategory(category.name) && !registryUnlocked
                     ? '\u{1F512}'
                     : category.icon,
@@ -84,12 +86,14 @@ class _CategoryChip extends StatelessWidget {
   final String icon;
   final bool selected;
   final VoidCallback onTap;
+  final String? tooltip;
 
   const _CategoryChip({
     required this.label,
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
@@ -100,7 +104,7 @@ class _CategoryChip extends StatelessWidget {
             ? BoardColors.amber
             : boardCategoryColor(label));
 
-    return InkWell(
+    final child = InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: AnimatedContainer(
@@ -139,5 +143,14 @@ class _CategoryChip extends StatelessWidget {
         ),
       ),
     );
+
+    if (tooltip != null) {
+      return Tooltip(
+        message: tooltip!,
+        child: child,
+      );
+    }
+
+    return child;
   }
 }

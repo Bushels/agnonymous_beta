@@ -31,6 +31,8 @@ const List<CommunityCategory> boardCategories = [
 ];
 
 const String defaultBoardCategory = 'Monette';
+const String cuntAcronymText = 'Chronic Unpaid Network Therapy';
+const String cuntFullName = 'C.U.N.T. (Chronic Unpaid Network Therapy)';
 const List<String> registryCategoryNames = ['C.U.N.T.', 'Scams'];
 
 // Firestore rules cannot prove that a NOT IN query excludes protected posts.

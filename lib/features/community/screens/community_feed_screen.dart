@@ -188,6 +188,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   isRefreshing: isRefreshing,
                   lastRefreshedAt: lastRefreshedAt,
                   onRefresh: _refreshCurrentCategory,
+                  onSelectCategory: _selectCategory,
                   onSearchChanged: (query) {
                     setState(() {
                       searchQuery = query;
@@ -248,6 +249,7 @@ class _RoomHero extends StatefulWidget {
   final bool isRefreshing;
   final DateTime? lastRefreshedAt;
   final Future<void> Function() onRefresh;
+  final Function(String) onSelectCategory;
   final ValueChanged<String> onSearchChanged;
 
   const _RoomHero({
@@ -255,6 +257,7 @@ class _RoomHero extends StatefulWidget {
     required this.isRefreshing,
     required this.lastRefreshedAt,
     required this.onRefresh,
+    required this.onSelectCategory,
     required this.onSearchChanged,
   });
 
@@ -362,6 +365,45 @@ class _RoomHeroState extends State<_RoomHero> {
                             ],
                           ),
                         ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => widget.onSelectCategory('C.U.N.T.'),
+                          child: Tooltip(
+                            message: cuntFullName,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isScamCategory
+                                    ? BoardColors.amber.withValues(alpha: 0.2)
+                                    : BoardColors.clay,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isScamCategory
+                                      ? BoardColors.amber
+                                      : BoardColors.line,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('\u{1F6E1}\uFE0F',
+                                      style: TextStyle(fontSize: 13)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'C.U.N.T.',
+                                    style: GoogleFonts.outfit(
+                                      color: BoardColors.amber,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         IconButton.filledTonal(
                           onPressed: () => setState(() => searchOpen = true),
                           style: IconButton.styleFrom(
@@ -402,6 +444,18 @@ class _RoomHeroState extends State<_RoomHero> {
                     ),
                     const SizedBox(height: 14),
                     Text(room, style: BoardText.roomTitle),
+                    if (isScamCategory) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Chronic Unpaid Network Therapy',
+                        style: GoogleFonts.inter(
+                          color: BoardColors.amber,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       isScamCategory
