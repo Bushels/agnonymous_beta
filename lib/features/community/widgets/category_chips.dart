@@ -56,12 +56,10 @@ class CategoryChips extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           ...boardCategories.map((category) {
-            final isCunt = category.name == 'C.U.N.T.';
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _CategoryChip(
                 label: category.name,
-                tooltip: isCunt ? cuntFullName : null,
                 icon: isRegistryCategory(category.name) && !registryUnlocked
                     ? '\u{1F512}'
                     : category.icon,
